@@ -2,137 +2,206 @@
 """
 pipeline.py — agent-driven build pipeline runner.
 
-Reads <component-dir>/steps.yaml and runs each step in order. Two kinds:
+Reads <component-dir>/steps.yaml; for each step runs its `do` (a shell
+command) or, when `do` is absent, renders <id>.md.tmpl and invokes
+`claude -p` inside a bwrap sandbox. Runs `checks:` after `do`; any non-zero
+exit halts the pipeline. Agent steps retry up to MAX_ATTEMPTS with the
+previous attempt's log tail appended to the prompt.
 
-  * Agent step (no `do:`) — renders framework/prompts/<id>.md.tmpl with
-    file-level `vars:`, writes it to <component-dir>/prompts/<id>.md, then
-    invokes claude inside a bwrap sandbox with permissions from the step's
-    `permission:` profile (framework/permissions/<name>.yaml). Retries up
-    to AGENT_MAX_ATTEMPTS times on failure; each retry appends the
-    previous attempt's log tail to the prompt as `## Previous attempt
-    failed`.
+State, logs, and rendered prompts live under <component-dir>/.runner/.
 
-  * Shell step (`do:` set) — runs the shell command. No retry, no sandbox
-    (shell steps are deterministic and authored by humans).
-
-After `do`, every `check:` runs as `framework/checkers/<name> <args>` from
-REPO_ROOT. Any non-zero exit fails the step and halts the pipeline.
-
-State is recorded in <component-dir>/.state.yaml as `<id>: passed|failed`.
-To redo a step: delete its line. To redo everything: delete the file.
-
-Usage:
-    python3 pipeline.py <component-dir>
+Usage: python3 pipeline.py <component-dir>
 """
-
 import os, subprocess, sys, yaml
 from pathlib import Path
 
 FW = Path(__file__).resolve().parent
 ROOT = FW.parent
-AGENT_MAX_ATTEMPTS = 3
 HOME = os.environ.get("HOME", "/root")
+RUNNER_DIR = ".runner"
+MAX_ATTEMPTS = 3
 
 
-def shell(cmd: str, log_path: Path) -> bool:
-    """Run `cmd` in REPO_ROOT; append all output to `log_path`. True on exit 0."""
-    with log_path.open("a") as log:
-        log.write(f"\n$ {cmd}\n"); log.flush()
+def shell(cmd, log):
+    """Run `cmd` in REPO_ROOT; append output to `log`. True on exit 0."""
+    with log.open("a") as f:
+        f.write(f"\n$ {cmd}\n"); f.flush()
         return subprocess.run(cmd, shell=True, cwd=ROOT,
-                              stdout=log, stderr=subprocess.STDOUT).returncode == 0
+                              stdout=f, stderr=subprocess.STDOUT).returncode == 0
 
 
-def render(tmpl: Path, out: Path, vars_: dict, append_failure: str | None = None) -> None:
-    """Substitute {{KEY}} placeholders into `tmpl`, write to `out`.
-    If `append_failure` is set, append it as a 'Previous attempt failed' block."""
-    out.parent.mkdir(parents=True, exist_ok=True)
-    text = tmpl.read_text()
-    for k, v in vars_.items():
-        text = text.replace(f"{{{{{k}}}}}", str(v))
-    if append_failure:
-        text += f"\n\n## Previous attempt failed\n\n```\n{append_failure}\n```\n"
-    out.write_text(text)
+def tail(path, n=50):
+    return "\n".join(path.read_text().splitlines()[-n:]) if path.exists() else ""
 
 
-def tail(path: Path, n: int = 50) -> str:
-    """Last n lines of a file (empty if missing)."""
-    if not path.exists():
-        return ""
-    return "\n".join(path.read_text().splitlines()[-n:])
-
-
-def run_checks(step: dict, log_path: Path) -> bool:
-    """Run each `check:` in order. True if all pass; False on first failure."""
+def run_checks(step, log):
     for check in step.get("checks") or []:
-        if not shell(f"{FW}/checkers/{check}", log_path):
+        if not shell(f"{FW}/checkers/{check}", log):
             return False
     return True
 
 
-def load_profile(name: str) -> dict:
-    """Load framework/permissions/<name>.yaml. Raises if missing."""
-    path = FW / "permissions" / f"{name}.yaml"
-    if not path.exists():
-        sys.exit(f"unknown permission profile: {name} (no {path})")
-    return yaml.safe_load(path.read_text()) or {}
+# ---- agent step plumbing ----
 
-
-def profile_to_allowed_tools(profile: dict) -> str:
-    """Build the comma-separated string for claude --allowed-tools.
-    Plain tools go in verbatim; bash patterns become `Bash(<pat>)`."""
-    parts = list(profile.get("tools") or [])
-    parts += [f"Bash({p})" for p in profile.get("bash") or []]
-    return ",".join(parts)
-
-
-def build_agent_cmd(prompt_path: Path, profile: dict) -> str:
-    """Wrap `claude -p` in a bwrap sandbox: REPO_ROOT is the only read-write
-    path the agent can see; system dirs are read-only; everything else
-    (home, /var, /root, ...) is invisible."""
-    tools = profile_to_allowed_tools(profile)
-    bwrap = (
-        "bwrap "
-        "--ro-bind /usr /usr "
-        "--ro-bind /etc /etc "
-        "--ro-bind /lib /lib --ro-bind /lib64 /lib64 "
-        "--ro-bind /bin /bin --ro-bind /opt /opt "
-        f"--ro-bind {HOME}/.claude {HOME}/.claude "
-        f"--bind {ROOT} {ROOT} "
-        "--proc /proc --dev /dev --tmpfs /tmp "
-        "--unshare-pid"
-    )
-    return f'{bwrap} claude -p --allowed-tools "{tools}" < "{prompt_path}"'
-
-
-def run_agent_step(step: dict, comp_dir: Path, vars_: dict, log_path: Path) -> bool:
-    """Render the prompt and invoke claude. Retry on failure, appending the
-    previous attempt's log tail to each retry's prompt."""
+def render_template(step, comp, vars_, prev_fail=None):
+    """Substitute {{KEY}} into the template, append prev failure if any, write out."""
     sid = step["id"]
-    tmpl = FW / "prompts" / f"{sid}.md.tmpl"
-    if not tmpl.exists():
-        log_path.open("a").write(f"\nno template at {tmpl}\n")
-        return False
-    out = comp_dir / "prompts" / f"{sid}.md"
-    profile = load_profile(step.get("permission") or "default")
-    prev_fail: str | None = None
+    out = comp / RUNNER_DIR / "prompts" / f"{sid}.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    text = (FW / "prompts" / f"{sid}.md.tmpl").read_text()
+    for k, v in vars_.items():
+        text = text.replace(f"{{{{{k}}}}}", str(v))
+    if prev_fail:
+        text += f"\n\n## Previous attempt failed\n\n```\n{prev_fail}\n```\n"
+    out.write_text(text)
+    return out
 
-    for attempt in range(1, AGENT_MAX_ATTEMPTS + 1):
-        log_path.open("a").write(f"\n--- attempt {attempt} ---\n")
-        render(tmpl, out, vars_, append_failure=prev_fail)
-        cmd = build_agent_cmd(out, profile)
-        if shell(cmd, log_path) and run_checks(step, log_path):
+
+def build_context(step, comp):
+    """Concat spec.format.md + each `context:` file into <id>.context.md.
+    Returns the path, or None when there are no context files."""
+    files = step.get("context") or []
+    if not files:
+        return None
+    out = comp / RUNNER_DIR / "prompts" / f"{step['id']}.context.md"
+    out.parent.mkdir(parents=True, exist_ok=True)
+    parts = []
+    fmt = FW / "spec.format.md"
+    if fmt.exists():
+        parts.append(f"# (framework) spec.format.md\n\n{fmt.read_text()}")
+    for f in files:
+        p = ROOT / f
+        parts.append(f"# {f}\n\n{p.read_text() if p.exists() else '(missing)'}")
+    out.write_text("\n\n---\n\n".join(parts))
+    return out
+
+
+def _bwrap_mounts(comp, scope):
+    """Return the list of bwrap CLI args for the agent sandbox.
+
+    bwrap takes flags like `--ro-bind SRC DEST`. We build them as a flat
+    list of strings, in the order bwrap will see them. Order matters: a
+    later mount on the same path overrides an earlier one — that's how we
+    bind the workspace as read-write, then re-bind specific files inside
+    it as read-only or empty.
+
+    Read top-to-bottom for the complete file view the agent gets.
+    """
+    args = []
+
+    # See, but can't edit: system files the agent's tools need.
+    for d in ["/usr", "/etc", "/lib", "/lib64", "/bin"]:
+        args += ["--ro-bind", d, d]
+    args += ["--ro-bind", f"{HOME}/.claude", f"{HOME}/.claude"]
+
+    # See AND edit: the agent's workspace, from steps.yaml `scope:`.
+    for s in scope:
+        p = ROOT / s.removesuffix("/**").rstrip("/")
+        args += ["--bind", str(p), str(p)]
+
+    # Re-bind specific files INSIDE the workspace to protect them.
+    args += ["--tmpfs", str(comp / RUNNER_DIR)]                          # framework state → empty
+    args += ["--ro-bind", "/dev/null", str(comp / "steps.yaml")]         # pipeline file → empty
+    args += ["--ro-bind", str(comp / "SPEC.yaml"), str(comp / "SPEC.yaml")]  # spec → read-only
+    for tf in sorted(Path(comp).rglob("*_test.go")):
+        args += ["--ro-bind", str(tf), str(tf)]                          # audited tests → read-only
+
+    # Functional minima — /proc, /dev, /tmp must exist or some tools refuse
+    # to start. Not security; just so things don't crash on missing paths.
+    args += ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"]
+
+    return args
+
+
+def _bwrap_cmd(comp, scope):
+    """Assemble the `bwrap ...` shell-command prefix from the flat arg list."""
+    return "bwrap " + " ".join(_bwrap_mounts(comp, scope))
+
+
+def _claude_tools(profile):
+    """The `--allowed-tools` value. Just the bare tool names plus any narrow
+    Bash patterns from `profile.bash`. No path patterns — paths are bwrap's
+    job, enforced at the kernel level."""
+    tools = list(profile.get("tools") or [])
+    tools += [f"Bash({p})" for p in profile.get("bash") or []]
+    return ",".join(tools)
+
+
+def claude_cmd(prompt, ctx, profile, scope, comp):
+    """The full sandboxed `claude -p ...` shell command.
+
+    Two layers:
+        bwrap (filesystem visibility)   — see _bwrap_mounts
+            └── --allowed-tools         — see _claude_tools (tool enablement only)
+
+    The agent can only see paths that bwrap makes visible; within those, the
+    enabled tools work without further restriction.
+    """
+    flags = f'--allowed-tools "{_claude_tools(profile)}"'
+    if ctx is not None:
+        # $(cat ...) lets the shell pass arbitrary file content as a single
+        # argv element without us having to escape it ourselves.
+        flags += f' --append-system-prompt "$(cat \'{ctx}\')"'
+    return f'{_bwrap_cmd(comp, scope)} claude -p {flags} < "{prompt}"'
+
+
+def show_sandbox(comp, scope):
+    """Print the bwrap command, one flag-group per line, for audit."""
+    args = _bwrap_mounts(comp, scope)
+    print(f"# bwrap for {comp}:")
+    print("bwrap \\")
+    # Group bwrap args sensibly: --ro-bind/--bind take 2 path args; --proc/--dev/--tmpfs take 1.
+    i = 0
+    while i < len(args):
+        flag = args[i]
+        if flag in ("--ro-bind", "--bind"):
+            print(f"  {flag} {args[i+1]} {args[i+2]}")
+            i += 3
+        elif flag in ("--proc", "--dev", "--tmpfs"):
+            print(f"  {flag} {args[i+1]}")
+            i += 2
+        else:
+            print(f"  {flag}")
+            i += 1
+
+
+def run_agent_step(step, comp, vars_, scope, log):
+    profile_path = FW / "permissions" / f"{step.get('permission') or 'default'}.yaml"
+    if not profile_path.exists():
+        sys.exit(f"unknown permission profile: {profile_path.stem}")
+    profile = yaml.safe_load(profile_path.read_text()) or {}
+    ctx = build_context(step, comp)   # built once; same across retries
+
+    prev_fail = None
+    for attempt in range(1, MAX_ATTEMPTS + 1):
+        log.open("a").write(f"\n--- attempt {attempt} ---\n")
+        prompt = render_template(step, comp, vars_, prev_fail=prev_fail)
+        if shell(claude_cmd(prompt, ctx, profile, scope, comp), log) \
+                and run_checks(step, log):
             return True
-        prev_fail = tail(log_path, 50)
-
+        prev_fail = tail(log, 50)
     return False
 
 
-def main() -> None:
-    if len(sys.argv) != 2:
-        sys.exit("usage: pipeline.py <component-dir>")
-    comp = Path(sys.argv[1])
+# ---- main ----
+
+def main():
+    args = sys.argv[1:]
+    if len(args) < 1:
+        sys.exit("usage: pipeline.py <component-dir> [--show-sandbox]")
+    # Resolve to an absolute path so every downstream operation (bwrap
+    # mounts, log files, state file) has unambiguous paths.
+    comp = (ROOT / Path(args[0])).resolve()
     pipe = yaml.safe_load((comp / "steps.yaml").read_text())
-    state_p = comp / ".state.yaml"
+    scope = pipe.get("scope") or []
+
+    # Audit helper: dump the bwrap mount table and exit.
+    if "--show-sandbox" in args:
+        show_sandbox(comp, scope)
+        return
+
+    state_p = comp / RUNNER_DIR / "state.yaml"
+    state_p.parent.mkdir(parents=True, exist_ok=True)
     state = (yaml.safe_load(state_p.read_text()) if state_p.exists() else {}) or {}
     state.setdefault("service", pipe.get("service", comp.name))
     state.setdefault("steps", {})
@@ -146,22 +215,18 @@ def main() -> None:
         if state["steps"].get(sid) == "passed":
             print(f"↷ {sid}")
             continue
-
         print(f"▶ {sid}")
-        log_path = comp / "logs" / f"{sid}.log"
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-
+        log = comp / RUNNER_DIR / "logs" / f"{sid}.log"
+        log.parent.mkdir(parents=True, exist_ok=True)
         if "do" in step:
-            ok = shell(step["do"], log_path) and run_checks(step, log_path)
+            ok = shell(step["do"], log) and run_checks(step, log)
         else:
-            ok = run_agent_step(step, comp, vars_, log_path)
-
+            ok = run_agent_step(step, comp, vars_, scope, log)
         state["steps"][sid] = "passed" if ok else "failed"
         state_p.write_text(yaml.safe_dump(state, sort_keys=False))
         if not ok:
-            sys.exit(f"✗ {sid}  (see {log_path})")
+            sys.exit(f"✗ {sid}  (see {log})")
         print(f"✓ {sid}")
-
     print(f"✓ done: {state['service']}")
 
 

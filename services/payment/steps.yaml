@@ -2,64 +2,28 @@ service: payment
 
 vars:
   SERVICE_NAME: payment
-  SERVICE_DIR: services/payment
+
+# Path-scoped permissions. Framework-managed files (steps.yaml, SPEC.yaml,
+# .runner/**) are auto-denied by the runner.
+scope:
+  - services/payment/**
 
 steps:
-  # shell — create directory layout and go.mod
-  # Checks aren't needed to prove mkdir worked, but they document the
-  # postconditions so a later `--verify` (or a human) can confirm the
-  # layout is still in place.
+  # shell — create the directory layout declared in SPEC.yaml's
+  # `file_organization`. The do command and the check both read SPEC.
   - id: scaffold_directories
-    do: |
-      set -e
-      mkdir -p services/payment/cmd/payment
-      mkdir -p services/payment/internal/{server,store,config,genpb}
-      mkdir -p services/payment/test
-      mkdir -p contracts/payment/v1
-      cd services/payment && [ -f go.mod ] || go mod init agentbench/services/payment
+    do: python3 framework/scripts/scaffold_from_spec services/payment/SPEC.yaml
     checks:
-      - file_exists services/payment/cmd/payment
-      - file_exists services/payment/internal/server
-      - file_exists services/payment/internal/store
-      - file_exists services/payment/internal/config
-      - file_exists services/payment/internal/genpb
-      - file_exists contracts/payment/v1
-      - file_exists services/payment/go.mod
+      - file_organization_matches_spec services/payment/SPEC.yaml
 
-  # agent — payment.proto with the 4 RPCs
-  - id: write_grpc_proto
-    needs: [scaffold_directories]
+  # agent — implement the entire service from SPEC.yaml.
+  # All verification (spec match, build, tests, container health) lives here
+  # as checks; on any failure the agent retries with the failure log appended.
+  - id: implement_service
+    context:
+      - services/payment/SPEC.yaml
     checks:
-      - grep_pattern contracts/payment/v1/payment.proto "rpc Authorize"
-      - grep_pattern contracts/payment/v1/payment.proto "rpc Capture"
-      - grep_pattern contracts/payment/v1/payment.proto "rpc Void"
-      - grep_pattern contracts/payment/v1/payment.proto "rpc Refund"
-
-  # agent — main.go, server.go (handlers + chaos), Makefile, Dockerfile
-  - id: implement_handlers
-    needs: [scaffold_directories, write_grpc_proto]
-    checks:
-      - go_builds services/payment
-
-  # agent — unit tests for handlers + chaos knobs
-  - id: write_unit_tests
-    needs: [implement_handlers]
-    checks:
+      # go_tests_pass covers compilation too — `go test ./...` builds every
+      # package before running tests, so a redundant `go_builds` is dropped.
       - go_tests_pass services/payment
-
-  # shell — build image, start container, smoke /healthz
-  - id: smoke_test_container
-    needs: [implement_handlers]
-    do: |
-      set -e
-      docker build -t agentbench/payment:dev services/payment
-      docker run -d --rm --name payment-smoke -p 18080:8080 agentbench/payment:dev
-      trap 'docker stop payment-smoke >/dev/null 2>&1 || true' EXIT
-      sleep 2
-      curl -fsS http://localhost:18080/healthz
-
-  # agent — fill README sections
-  - id: write_service_readme
-    needs: [implement_handlers]
-    checks:
-      - readme_sections_present services/payment/README.md Purpose RPCs Configuration Provenance
+      - docker_runs services/payment

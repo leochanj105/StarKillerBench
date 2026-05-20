@@ -1,0 +1,33 @@
+#!/usr/bin/env python3
+"""
+scaffold_from_spec <spec.yaml>
+
+Read the spec's `file_organization` and:
+  - Create every directory in `directories`.
+  - Run `go mod init <go_module>` in `service_dir` if go.mod doesn't exist.
+
+This is a `do:` action; for the matching verification, see the
+`file_organization_matches_spec` checker.
+"""
+import subprocess, sys, yaml
+from pathlib import Path
+
+if len(sys.argv) != 2:
+    sys.exit("usage: scaffold_from_spec <spec.yaml>")
+
+spec_path = Path(sys.argv[1])
+if not spec_path.exists():
+    sys.exit(f"missing: {spec_path}")
+
+spec = yaml.safe_load(spec_path.read_text()) or {}
+fo = spec.get("file_organization") or {}
+
+for d in fo.get("directories") or []:
+    Path(d).mkdir(parents=True, exist_ok=True)
+
+svc_dir = fo.get("service_dir")
+mod = fo.get("go_module")
+if svc_dir and mod:
+    gomod = Path(svc_dir) / "go.mod"
+    if not gomod.exists():
+        subprocess.run(["go", "mod", "init", mod], cwd=svc_dir, check=True)

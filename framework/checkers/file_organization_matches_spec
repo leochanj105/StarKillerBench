@@ -1,0 +1,34 @@
+#!/usr/bin/env python3
+"""
+file_organization_matches_spec <spec.yaml>
+
+Verify every directory in `file_organization.directories` exists, and that
+go.mod exists under `service_dir`. The scaffold step and this checker read
+the same SPEC keys — no double declaration.
+"""
+import sys, yaml
+from pathlib import Path
+
+if len(sys.argv) != 2:
+    sys.exit("usage: file_organization_matches_spec <spec.yaml>")
+
+spec_path = Path(sys.argv[1])
+if not spec_path.exists():
+    sys.exit(f"missing: {spec_path}")
+
+spec = yaml.safe_load(spec_path.read_text()) or {}
+fo = spec.get("file_organization") or {}
+
+missing: list[str] = []
+for d in fo.get("directories") or []:
+    if not Path(d).exists():
+        missing.append(d)
+
+svc_dir = fo.get("service_dir")
+if svc_dir:
+    gomod = Path(svc_dir) / "go.mod"
+    if not gomod.exists():
+        missing.append(str(gomod))
+
+if missing:
+    sys.exit(f"missing per spec.file_organization: {missing}")

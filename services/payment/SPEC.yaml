@@ -1,0 +1,93 @@
+summary: |
+  payment is a mock external payment provider in the StarkillerBench Hotel
+  Reservation app. It stands in for a real PSP so the booking saga can be
+  exercised without an external integration. Not production-realistic; a
+  behavior-shaped substitute.
+
+file_organization:
+  service_dir: services/payment
+  go_module: agentbench/services/payment
+  directories:
+    - services/payment/cmd/payment
+    - services/payment/internal/server
+    - services/payment/internal/store
+    - services/payment/internal/config
+    - services/payment/internal/genpb
+    - services/payment/test
+    - services/payment/proto/v1
+
+interface:
+  protocol: grpc
+  service: PaymentService
+  package: payment.v1
+  rpcs:
+    - name: Authorize
+      request:
+        amount: int64
+        currency: string
+        payment_token: string
+      response:
+        auth_id: string
+      description: Records a new authorization; returns a unique opaque auth_id.
+
+    - name: Capture
+      request:
+        auth_id: string
+      response: empty
+      description: Captures a previously-authorized amount.
+
+    - name: Void
+      request:
+        auth_id: string
+      response: empty
+      description: Voids an authorization that was never captured.
+
+    - name: Refund
+      request:
+        auth_id: string
+        amount: int64
+      response: empty
+      description: Refunds (partial or full) a captured authorization.
+
+error_semantics:
+  - rpc: Authorize
+    condition: amount is non-positive or currency is empty
+    code: InvalidArgument
+
+  - rpc: Capture
+    condition: unknown auth_id
+    code: NotFound
+  - rpc: Capture
+    condition: incompatible state (e.g. capturing an already-voided auth)
+    code: FailedPrecondition
+
+  - rpc: Void
+    condition: unknown auth_id
+    code: NotFound
+  - rpc: Void
+    condition: incompatible state (already captured)
+    code: FailedPrecondition
+
+  - rpc: Refund
+    condition: unknown auth_id
+    code: NotFound
+  - rpc: Refund
+    condition: refund amount exceeds (captured - already refunded)
+    code: FailedPrecondition
+
+state:
+  kind: in_memory
+  lifetime: per_process       # state is lost on restart, by design
+  stores:
+    authorizations:
+      kind: map
+      key:
+        name: auth_id
+        type: string
+      value:
+        amount: int64         # the originally authorized amount
+        currency: string
+        status: string        # values: authorized | captured | voided
+        refunded: int64       # total refunded so far; only meaningful after capture
+
+dependent_interface: []

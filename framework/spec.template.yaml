@@ -1,0 +1,51 @@
+summary: |
+  <One paragraph: what this service does and why it exists in the benchmark.>
+
+file_organization:
+  service_dir: services/<name>
+  go_module: agentbench/services/<name>
+  directories:
+    - services/<name>/cmd/<name>
+    - services/<name>/internal/server
+    - services/<name>/internal/store
+    - services/<name>/internal/genpb
+    - services/<name>/proto/v1
+    # ...
+
+interface:
+  protocol: grpc                # grpc | http | nats
+  service: <ServiceName>        # PascalCase
+  package: <name>.v1
+  rpcs:
+    - name: <RpcName>
+      request:
+        <field>: <type>
+      response:
+        <field>: <type>
+      description: <one line>
+    # ...
+
+error_semantics:
+  - rpc: <RpcName>
+    condition: <when this error is returned>
+    code: <gRPC status code name>
+  # ...
+
+state:
+  kind: <stateless | in_memory | persistent>
+  lifetime: <per_process | persistent | ttl:N>
+  stores:
+    <store_name>:
+      kind: <map | table | list | set>
+      key:
+        name: <key field name>
+        type: <key type>
+      value:
+        <field>: <type>
+        # ...
+
+dependent_interface: []
+  # Or list outbound calls:
+  # - service: <name>
+  #   rpc: <RpcName>
+  #   purpose: <one line>

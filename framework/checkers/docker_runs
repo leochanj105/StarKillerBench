@@ -1,0 +1,36 @@
+#!/usr/bin/env python3
+"""
+docker_runs <service-dir>
+
+Build the docker image from <service-dir>, run it in the background, hit
+`/healthz` on the host-published port, then tear down. Pass iff each step
+succeeds.
+
+This is a behavioral check: a passing build doesn't prove the service
+actually runs. Container is named `<svc>-smoke`, host port 18080.
+"""
+import subprocess, sys, time
+from pathlib import Path
+
+if len(sys.argv) != 2:
+    sys.exit("usage: docker_runs <service-dir>")
+
+svc_dir = Path(sys.argv[1])
+svc_name = svc_dir.name
+image = f"agentbench/{svc_name}:dev"
+container = f"{svc_name}-smoke"
+host_port = 18080
+
+def sh(cmd: str) -> None:
+    r = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    if r.returncode != 0:
+        sys.exit(f"failed: {cmd}\nstdout:\n{r.stdout}\nstderr:\n{r.stderr}")
+
+sh(f"docker build -t {image} {svc_dir}")
+sh(f"docker run -d --rm --name {container} -p {host_port}:8080 {image}")
+try:
+    time.sleep(2)
+    sh(f"curl -fsS http://localhost:{host_port}/healthz")
+finally:
+    # Cleanup must not affect the check's outcome.
+    subprocess.run(f"docker stop {container}", shell=True, capture_output=True)
