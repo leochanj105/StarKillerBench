@@ -29,7 +29,7 @@ import (
 	"context"
 	"testing"
 
-	pb "agentbench/services/payment/internal/genpb/payment/v1"
+	pb "agentbench/services/payment/internal/genpb/v1"
 	"agentbench/services/payment/internal/server"
 
 	"google.golang.org/grpc/codes"

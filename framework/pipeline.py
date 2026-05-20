@@ -93,6 +93,9 @@ def _bwrap_mounts(comp, scope):
     for d in ["/usr", "/etc", "/lib", "/lib64", "/bin"]:
         args += ["--ro-bind", d, d]
     args += ["--ro-bind", f"{HOME}/.claude", f"{HOME}/.claude"]
+    # ~/go: read-write so `go mod tidy` can populate the module cache.
+    # Contains Go's plugin bin (protoc-gen-go etc.) and module cache.
+    args += ["--bind", f"{HOME}/go", f"{HOME}/go"]
 
     # See AND edit: the agent's workspace, from steps.yaml `scope:`.
     for s in scope:
@@ -209,6 +212,13 @@ def main():
 
     os.environ["FRAMEWORK_DIR"] = str(FW)
     os.environ["REPO_ROOT"] = str(ROOT)
+    # Prepend ~/go/bin so protoc finds its Go plugins (protoc-gen-go, etc.).
+    os.environ["PATH"] = f"{HOME}/go/bin:" + os.environ.get("PATH", "")
+    # Defensively clear proxy env vars that might point at a local proxy
+    # (e.g., clash) which the sandbox can't reach.
+    for k in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY",
+              "http_proxy", "https_proxy", "all_proxy"):
+        os.environ.pop(k, None)
 
     for step in pipe.get("steps") or []:
         sid = step["id"]

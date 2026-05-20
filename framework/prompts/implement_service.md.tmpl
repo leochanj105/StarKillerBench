@@ -21,7 +21,7 @@ Treat SPEC.yaml as the single source of truth. Do not read other project docs. I
 
 - `syntax = "proto3";`
 - `package <spec.interface.package>;`
-- `option go_package = "agentbench/services/{{SERVICE_NAME}}/internal/genpb/{{SERVICE_NAME}}/v1;{{SERVICE_NAME}}v1";`
+- `option go_package = "agentbench/services/{{SERVICE_NAME}}/internal/genpb/v1;{{SERVICE_NAME}}v1";`
 - Service named `<spec.interface.service>`.
 - One `rpc` per entry in `spec.interface.rpcs`. Request/response messages match the `request:` / `response:` shapes in the spec exactly.
 
