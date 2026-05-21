@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package inventory.v1;
+
+option go_package = "agentbench/services/inventory/internal/genpb/v1;inventoryv1";
+
+service InventoryService {
+  rpc SetStock(SetStockRequest) returns (SetStockResponse);
+  rpc Hold(HoldRequest) returns (HoldResponse);
+  rpc Commit(CommitRequest) returns (CommitResponse);
+  rpc Release(ReleaseRequest) returns (ReleaseResponse);
+}
+
+message SetStockRequest {
+  string hotel_id = 1;
+  string room_type = 2;
+  string date = 3;
+  int32 quantity = 4;
+}
+
+message SetStockResponse {}
+
+message HoldRequest {
+  string hotel_id = 1;
+  string room_type = 2;
+  string date = 3;
+  int32 quantity = 4;
+}
+
+message HoldResponse {
+  string hold_id = 1;
+}
+
+message CommitRequest {
+  string hold_id = 1;
+}
+
+message CommitResponse {}
+
+message ReleaseRequest {
+  string hold_id = 1;
+}
+
+message ReleaseResponse {}
