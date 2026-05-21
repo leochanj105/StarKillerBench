@@ -1,0 +1,50 @@
+summary: |
+  cancellation reverses a confirmed booking by issuing a full refund.
+  It fetches the booking via booking.GetBooking to learn the auth_id and
+  amount, then calls payment.Refund. Inventory is NOT returned to
+  availability in this iteration. Stateless: every call is independent.
+
+file_organization:
+  service_dir: services/cancellation
+  go_module: agentbench/services/cancellation
+  directories:
+    - services/cancellation/cmd/cancellation
+    - services/cancellation/internal/server
+    - services/cancellation/internal/genpb
+    - services/cancellation/proto/v1
+
+interface:
+  protocol: grpc
+  service: CancellationService
+  package: cancellation.v1
+  rpcs:
+    - name: Cancel
+      request:
+        booking_id: string
+      response: empty
+      description: |
+        Cancels a booking with a full refund. Calls booking.GetBooking to
+        look up the auth_id and amount, then calls payment.Refund.
+
+error_semantics:
+  - rpc: Cancel
+    condition: booking_id is empty
+    code: InvalidArgument
+  - rpc: Cancel
+    condition: booking.GetBooking returns NotFound
+    code: NotFound
+  - rpc: Cancel
+    condition: payment.Refund returns any error
+    code: FailedPrecondition
+
+state:
+  kind: stateless
+  lifetime: per_process
+
+dependent_interface:
+  - service: booking
+    rpc: GetBooking
+    purpose: Look up the auth_id and amount tied to the booking being cancelled.
+  - service: payment
+    rpc: Refund
+    purpose: Issue a full refund against the booking's auth_id.

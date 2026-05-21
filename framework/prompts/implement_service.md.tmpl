@@ -42,6 +42,19 @@ The test file `services/{{SERVICE_NAME}}/internal/server/server_test.go` is pre-
 - `Dockerfile` — multi-stage; final image `gcr.io/distroless/static-debian12`; exposes `50051` and `8080`.
 - Update `go.mod` via `go mod tidy`.
 
+### 5. Cross-service imports (only if `spec.dependent_interface` is non-empty)
+
+If the spec declares dependent services, you'll need to import their generated stubs. Each upstream service `<dep>` has its proto and stubs visible at `services/<dep>/proto/v1/` and `services/<dep>/internal/genpb/v1/`. Import as:
+
+    import deppb "agentbench/services/<dep>/internal/genpb/v1"
+
+For Go to resolve these cross-module imports, add to your `go.mod`:
+
+    require agentbench/services/<dep> v0.0.0
+    replace agentbench/services/<dep> => ../<dep>
+
+(One pair per dependent service.) Then `go mod tidy` resolves the imports. The pre-authored test file in `internal/server/server_test.go` shows exactly which upstream RPCs your handlers must call and with what arguments — its mocks define the interface your handlers receive via `NewServer(...)`.
+
 ## Constraints
 
 - The proto's RPC set MUST equal `spec.interface.rpcs` exactly — no extras, no omissions.

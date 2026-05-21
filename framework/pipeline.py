@@ -76,6 +76,28 @@ def build_context(step, comp):
     return out
 
 
+def _dependent_service_binds(comp):
+    """Read SPEC.yaml's `dependent_interface` and ro-bind each upstream
+    service's proto + generated stubs + go.mod / go.sum into the sandbox.
+    The agent imports upstream types via a Go module replace directive."""
+    args = []
+    spec_path = comp / "SPEC.yaml"
+    if not spec_path.exists():
+        return args
+    spec = yaml.safe_load(spec_path.read_text()) or {}
+    seen = set()
+    for d in spec.get("dependent_interface") or []:
+        svc = d.get("service")
+        if not svc or svc in seen:
+            continue
+        seen.add(svc)
+        for sub in ["go.mod", "go.sum", "internal/genpb", "proto"]:
+            p = ROOT / "services" / svc / sub
+            if p.exists():
+                args += ["--ro-bind", str(p), str(p)]
+    return args
+
+
 def _bwrap_mounts(comp, scope):
     """Return the list of bwrap CLI args for the agent sandbox.
 
@@ -107,6 +129,11 @@ def _bwrap_mounts(comp, scope):
     for s in scope:
         p = ROOT / s.removesuffix("/**").rstrip("/")
         args += ["--bind", str(p), str(p)]
+
+    # Read-only: each upstream service this component depends on. Exposes
+    # just the proto, generated stubs, and go.mod / go.sum so the agent can
+    # import the upstream's types via a `replace` directive in go.mod.
+    args += _dependent_service_binds(comp)
 
     # Re-bind specific files INSIDE the workspace to protect them.
     args += ["--tmpfs", str(comp / RUNNER_DIR)]                          # framework state → empty

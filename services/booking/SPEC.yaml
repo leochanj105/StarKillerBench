@@ -1,0 +1,122 @@
+summary: |
+  booking orchestrates the hotel-reservation saga: hold inventory, authorize
+  + capture payment, commit inventory, persist the booking. On any failure
+  along the chain it runs compensating actions. State (the persisted
+  booking records) is in process memory.
+
+file_organization:
+  service_dir: services/booking
+  go_module: agentbench/services/booking
+  directories:
+    - services/booking/cmd/booking
+    - services/booking/internal/server
+    - services/booking/internal/genpb
+    - services/booking/proto/v1
+
+interface:
+  protocol: grpc
+  service: BookingService
+  package: booking.v1
+  rpcs:
+    - name: CreateBooking
+      request:
+        user_id: string
+        hotel_id: string
+        room_type: string
+        date: string
+        amount: int64
+        currency: string
+        payment_token: string
+        idempotency_key: string
+      response:
+        booking_id: string
+      description: |
+        Runs the booking saga (inventory.Hold → payment.Authorize →
+        payment.Capture → inventory.Commit → persist) and returns the new
+        booking_id. If `idempotency_key` was used by a prior successful
+        CreateBooking, returns that booking_id without re-running the saga.
+
+    - name: GetBooking
+      request:
+        booking_id: string
+      response:
+        user_id: string
+        hotel_id: string
+        room_type: string
+        date: string
+        amount: int64
+        currency: string
+        auth_id: string
+        status: string
+      description: |
+        Returns the persisted booking record. `status` is always "confirmed"
+        (failed sagas are not persisted).
+
+    - name: ListBookings
+      request:
+        user_id: string
+      response:
+        booking_ids: repeated string
+      description: |
+        Returns the booking_ids belonging to a user. Empty list if none.
+
+error_semantics:
+  - rpc: CreateBooking
+    condition: any required string field is empty, or amount is non-positive
+    code: InvalidArgument
+  - rpc: CreateBooking
+    condition: any upstream call in the saga fails (after compensations run)
+    code: FailedPrecondition
+
+  - rpc: GetBooking
+    condition: unknown booking_id
+    code: NotFound
+
+state:
+  kind: in_memory
+  lifetime: per_process
+  stores:
+    bookings:
+      kind: map
+      key:
+        name: booking_id
+        type: string
+      value:
+        user_id: string
+        hotel_id: string
+        room_type: string
+        date: string
+        amount: int64
+        currency: string
+        auth_id: string
+        status: string       # always "confirmed" in the persisted set
+    idempotency:
+      kind: map
+      key:
+        name: idempotency_key
+        type: string
+      value:
+        booking_id: string
+
+dependent_interface:
+  - service: inventory
+    rpc: Hold
+    purpose: Reserve a unit of stock at booking time.
+  - service: inventory
+    rpc: Commit
+    purpose: Finalize the reservation after payment succeeds.
+  - service: inventory
+    rpc: Release
+    purpose: Compensating action if payment fails after Hold succeeded.
+  - service: payment
+    rpc: Authorize
+    purpose: Hold funds on the user's card.
+  - service: payment
+    rpc: Capture
+    purpose: Charge the held funds.
+  - service: payment
+    rpc: Void
+    purpose: Compensating action if Capture fails after Authorize.
+  - service: payment
+    rpc: Refund
+    purpose: Compensating action if Commit fails after Capture.

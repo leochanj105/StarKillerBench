@@ -1,0 +1,111 @@
+summary: |
+  inventory tracks per-(hotel, room_type, date) room stock for the booking
+  saga. An admin populates totals via SetStock; bookings reserve units via
+  Hold and then either Commit (confirm the sale) or Release (cancel before
+  confirm). State lives in process memory and resets on restart.
+
+file_organization:
+  service_dir: services/inventory
+  go_module: agentbench/services/inventory
+  directories:
+    - services/inventory/cmd/inventory
+    - services/inventory/internal/server
+    - services/inventory/internal/genpb
+    - services/inventory/proto/v1
+
+interface:
+  protocol: grpc
+  service: InventoryService
+  package: inventory.v1
+  rpcs:
+    - name: SetStock
+      request:
+        hotel_id: string
+        room_type: string
+        date: string
+        quantity: int32
+      response: empty
+      description: |
+        Sets the total stock for one (hotel_id, room_type, date) key. The
+        new total overrides any prior total; sold and held counts are
+        preserved.
+
+    - name: Hold
+      request:
+        hotel_id: string
+        room_type: string
+        date: string
+        quantity: int32
+      response:
+        hold_id: string
+      description: |
+        Reserves `quantity` units for the key. Returns an opaque hold_id.
+        Reduces available stock for subsequent calls.
+
+    - name: Commit
+      request:
+        hold_id: string
+      response: empty
+      description: |
+        Converts a held reservation to sold. The hold is consumed.
+
+    - name: Release
+      request:
+        hold_id: string
+      response: empty
+      description: |
+        Releases a held reservation. The held quantity returns to available.
+
+error_semantics:
+  - rpc: SetStock
+    condition: quantity is negative
+    code: InvalidArgument
+
+  - rpc: Hold
+    condition: quantity is non-positive
+    code: InvalidArgument
+  - rpc: Hold
+    condition: no stock record exists for (hotel_id, room_type, date)
+    code: NotFound
+  - rpc: Hold
+    condition: insufficient available stock (total - sold - held < quantity)
+    code: FailedPrecondition
+
+  - rpc: Commit
+    condition: unknown hold_id
+    code: NotFound
+  - rpc: Commit
+    condition: hold has already been committed or released
+    code: FailedPrecondition
+
+  - rpc: Release
+    condition: unknown hold_id
+    code: NotFound
+  - rpc: Release
+    condition: hold has already been committed or released
+    code: FailedPrecondition
+
+state:
+  kind: in_memory
+  lifetime: per_process
+  stores:
+    stock:
+      kind: map
+      key:
+        name: stock_key
+        type: string         # "<hotel_id>|<room_type>|<date>"
+      value:
+        total: int32         # set by SetStock
+        sold: int32          # incremented on Commit
+        held: int32          # incremented on Hold, decremented on Commit/Release
+    holds:
+      kind: map
+      key:
+        name: hold_id
+        type: string
+      value:
+        stock_key: string
+        quantity: int32
+        status: string       # held | committed | released
+
+dependent_interface: []
