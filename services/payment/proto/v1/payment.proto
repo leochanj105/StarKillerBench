@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package payment.v1;
+
+option go_package = "agentbench/services/payment/internal/genpb/v1;paymentv1";
+
+service PaymentService {
+  rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
+  rpc Capture(CaptureRequest) returns (CaptureResponse);
+  rpc Void(VoidRequest) returns (VoidResponse);
+  rpc Refund(RefundRequest) returns (RefundResponse);
+}
+
+message AuthorizeRequest {
+  int64 amount = 1;
+  string currency = 2;
+  string payment_token = 3;
+}
+
+message AuthorizeResponse {
+  string auth_id = 1;
+}
+
+message CaptureRequest {
+  string auth_id = 1;
+}
+
+message CaptureResponse {}
+
+message VoidRequest {
+  string auth_id = 1;
+}
+
+message VoidResponse {}
+
+message RefundRequest {
+  string auth_id = 1;
+  int64 amount = 2;
+}
+
+message RefundResponse {}

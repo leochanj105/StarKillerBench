@@ -92,9 +92,15 @@ def _bwrap_mounts(comp, scope):
     # See, but can't edit: system files the agent's tools need.
     for d in ["/usr", "/etc", "/lib", "/lib64", "/bin"]:
         args += ["--ro-bind", d, d]
-    args += ["--ro-bind", f"{HOME}/.claude", f"{HOME}/.claude"]
-    # ~/go: read-write so `go mod tidy` can populate the module cache.
-    # Contains Go's plugin bin (protoc-gen-go etc.) and module cache.
+    # ~/.local: the `claude` binary lives at ~/.local/bin/claude (symlink to
+    # ~/.local/share/claude/versions/<v>).
+    args += ["--ro-bind", f"{HOME}/.local", f"{HOME}/.local"]
+    # ~/.claude: claude's config dir + session state (rw — claude writes session logs).
+    args += ["--bind", f"{HOME}/.claude", f"{HOME}/.claude"]
+    # ~/.claude.json: claude's main config file (lives outside ~/.claude/).
+    args += ["--bind", f"{HOME}/.claude.json", f"{HOME}/.claude.json"]
+    # ~/go: read-write so `go mod tidy` can populate the module cache;
+    # also contains Go's plugin bin (protoc-gen-go etc.).
     args += ["--bind", f"{HOME}/go", f"{HOME}/go"]
 
     # See AND edit: the agent's workspace, from steps.yaml `scope:`.
@@ -140,7 +146,7 @@ def claude_cmd(prompt, ctx, profile, scope, comp):
     The agent can only see paths that bwrap makes visible; within those, the
     enabled tools work without further restriction.
     """
-    flags = f'--allowed-tools "{_claude_tools(profile)}"'
+    flags = f'--allowed-tools "{_claude_tools(profile)}" --verbose --output-format stream-json'
     if ctx is not None:
         # $(cat ...) lets the shell pass arbitrary file content as a single
         # argv element without us having to escape it ourselves.
