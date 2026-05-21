@@ -10,10 +10,7 @@ file_organization:
   directories:
     - services/payment/cmd/payment
     - services/payment/internal/server
-    - services/payment/internal/store
-    - services/payment/internal/config
-    - services/payment/internal/genpb
-    - services/payment/test
+    - services/payment/api/v1
     - services/payment/proto/v1
 
 interface:

@@ -10,13 +10,13 @@ import (
 	"syscall"
 	"time"
 
-	pb "agentbench/services/payment/internal/genpb/v1"
+	pb "agentbench/services/payment/api/v1"
 	"agentbench/services/payment/internal/server"
 
 	"google.golang.org/grpc"
 )
 
-//go:generate protoc -I=../../proto --go_out=../../internal/genpb --go_opt=paths=source_relative --go-grpc_out=../../internal/genpb --go-grpc_opt=paths=source_relative v1/payment.proto
+//go:generate protoc -I=../../proto --go_out=../../api --go_opt=paths=source_relative --go-grpc_out=../../api --go-grpc_opt=paths=source_relative v1/payment.proto
 
 const (
 	grpcAddr = ":50051"

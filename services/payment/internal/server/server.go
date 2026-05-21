@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"sync"
 
-	pb "agentbench/services/payment/internal/genpb/v1"
+	pb "agentbench/services/payment/api/v1"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

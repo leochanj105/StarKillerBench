@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package payment.v1;
 
-option go_package = "agentbench/services/payment/internal/genpb/v1;paymentv1";
+option go_package = "agentbench/services/payment/api/v1;paymentv1";
 
 service PaymentService {
   rpc Authorize(AuthorizeRequest) returns (AuthorizeResponse);
