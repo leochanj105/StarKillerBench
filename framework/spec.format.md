@@ -25,7 +25,7 @@ file_organization:
     - services/payment/cmd/payment
     - services/payment/internal/server
     - services/payment/internal/store
-    - services/payment/internal/genpb
+    - services/payment/api/v1
     - services/payment/proto/v1           # .proto file lives under the service
     - ...
 ```
@@ -98,10 +98,15 @@ For `kind: stateless`, omit `stores`.
 ## `dependent_interface`
 
 ```yaml
-dependent_interface:
-  - service: booking
-    rpc: GetBooking
-    purpose: Look up a booking by ID.
+dependent_interface: [payment, inventory]
 ```
 
-List of outbound RPC calls this service makes. Each entry: `service` + `rpc` + `purpose` (one line). Empty list `[]` for leaf services.
+A bare list of upstream service names. Empty `[]` for leaf services.
+
+Each name `<svc>` in the list implies:
+
+- The agent's Go code can `import "agentbench/services/<svc>/api/v1"`.
+- The framework ro-binds `services/<svc>/api/v1`, `services/<svc>/go.mod`, and `services/<svc>/go.sum` into the sandbox.
+- The agent must add `replace agentbench/services/<svc> => ../<svc>` to its own `go.mod`.
+
+That's the single auditable declaration of cross-service file access — read this list in a service's `SPEC.yaml` and you know exactly which other services it can import from.

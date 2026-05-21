@@ -77,21 +77,17 @@ def build_context(step, comp):
 
 
 def _dependent_service_binds(comp):
-    """Read SPEC.yaml's `dependent_interface` and ro-bind each upstream
-    service's proto + generated stubs + go.mod / go.sum into the sandbox.
-    The agent imports upstream types via a Go module replace directive."""
+    """For each name in SPEC.yaml's `dependent_interface`, ro-bind exactly
+    three paths so the agent can import the upstream's Go package: its
+    public `api/v1` package, plus `go.mod` and `go.sum` for Go module
+    resolution. `dependent_interface` is a bare list of service names."""
     args = []
     spec_path = comp / "SPEC.yaml"
     if not spec_path.exists():
         return args
     spec = yaml.safe_load(spec_path.read_text()) or {}
-    seen = set()
-    for d in spec.get("dependent_interface") or []:
-        svc = d.get("service")
-        if not svc or svc in seen:
-            continue
-        seen.add(svc)
-        for sub in ["go.mod", "go.sum", "internal/genpb", "proto"]:
+    for svc in spec.get("dependent_interface") or []:
+        for sub in ["api/v1", "go.mod", "go.sum"]:
             p = ROOT / "services" / svc / sub
             if p.exists():
                 args += ["--ro-bind", str(p), str(p)]

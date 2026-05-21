@@ -8,7 +8,7 @@ file_organization:
     - services/<name>/cmd/<name>
     - services/<name>/internal/server
     - services/<name>/internal/store
-    - services/<name>/internal/genpb
+    - services/<name>/api/v1
     - services/<name>/proto/v1
     # ...
 
