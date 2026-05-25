@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package inventory.v1;
 
-option go_package = "agentbench/services/inventory/internal/genpb/v1;inventoryv1";
+option go_package = "agentbench/services/inventory/api/v1;inventoryv1";
 
 service InventoryService {
   rpc SetStock(SetStockRequest) returns (SetStockResponse);

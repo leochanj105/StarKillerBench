@@ -17,10 +17,10 @@ import (
 	"context"
 	"testing"
 
-	bookingpb "agentbench/services/booking/internal/genpb/v1"
-	pb "agentbench/services/cancellation/internal/genpb/v1"
+	bookingpb "agentbench/services/booking/api/v1"
+	pb "agentbench/services/cancellation/api/v1"
 	"agentbench/services/cancellation/internal/server"
-	paymentpb "agentbench/services/payment/internal/genpb/v1"
+	paymentpb "agentbench/services/payment/api/v1"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

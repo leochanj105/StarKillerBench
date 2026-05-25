@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+package booking.v1;
+
+option go_package = "agentbench/services/booking/api/v1;bookingv1";
+
+service BookingService {
+  rpc CreateBooking(CreateBookingRequest) returns (CreateBookingResponse);
+  rpc GetBooking(GetBookingRequest) returns (GetBookingResponse);
+  rpc ListBookings(ListBookingsRequest) returns (ListBookingsResponse);
+}
+
+message CreateBookingRequest {
+  string user_id = 1;
+  string hotel_id = 2;
+  string room_type = 3;
+  string date = 4;
+  int64 amount = 5;
+  string currency = 6;
+  string payment_token = 7;
+  string idempotency_key = 8;
+}
+
+message CreateBookingResponse {
+  string booking_id = 1;
+}
+
+message GetBookingRequest {
+  string booking_id = 1;
+}
+
+message GetBookingResponse {
+  string user_id = 1;
+  string hotel_id = 2;
+  string room_type = 3;
+  string date = 4;
+  int64 amount = 5;
+  string currency = 6;
+  string auth_id = 7;
+  string status = 8;
+}
+
+message ListBookingsRequest {
+  string user_id = 1;
+}
+
+message ListBookingsResponse {
+  repeated string booking_ids = 1;
+}

@@ -10,7 +10,7 @@ file_organization:
   directories:
     - services/booking/cmd/booking
     - services/booking/internal/server
-    - services/booking/internal/genpb
+    - services/booking/api/v1
     - services/booking/proto/v1
 
 interface:
@@ -98,25 +98,4 @@ state:
       value:
         booking_id: string
 
-dependent_interface:
-  - service: inventory
-    rpc: Hold
-    purpose: Reserve a unit of stock at booking time.
-  - service: inventory
-    rpc: Commit
-    purpose: Finalize the reservation after payment succeeds.
-  - service: inventory
-    rpc: Release
-    purpose: Compensating action if payment fails after Hold succeeded.
-  - service: payment
-    rpc: Authorize
-    purpose: Hold funds on the user's card.
-  - service: payment
-    rpc: Capture
-    purpose: Charge the held funds.
-  - service: payment
-    rpc: Void
-    purpose: Compensating action if Capture fails after Authorize.
-  - service: payment
-    rpc: Refund
-    purpose: Compensating action if Commit fails after Capture.
+dependent_interface: [inventory, payment]

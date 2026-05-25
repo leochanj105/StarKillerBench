@@ -10,7 +10,7 @@ file_organization:
   directories:
     - services/cancellation/cmd/cancellation
     - services/cancellation/internal/server
-    - services/cancellation/internal/genpb
+    - services/cancellation/api/v1
     - services/cancellation/proto/v1
 
 interface:
@@ -41,10 +41,4 @@ state:
   kind: stateless
   lifetime: per_process
 
-dependent_interface:
-  - service: booking
-    rpc: GetBooking
-    purpose: Look up the auth_id and amount tied to the booking being cancelled.
-  - service: payment
-    rpc: Refund
-    purpose: Issue a full refund against the booking's auth_id.
+dependent_interface: [booking, payment]

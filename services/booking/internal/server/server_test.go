@@ -23,10 +23,10 @@ import (
 	"context"
 	"testing"
 
-	bookingpb "agentbench/services/booking/internal/genpb/v1"
+	bookingpb "agentbench/services/booking/api/v1"
 	"agentbench/services/booking/internal/server"
-	inventorypb "agentbench/services/inventory/internal/genpb/v1"
-	paymentpb "agentbench/services/payment/internal/genpb/v1"
+	inventorypb "agentbench/services/inventory/api/v1"
+	paymentpb "agentbench/services/payment/api/v1"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

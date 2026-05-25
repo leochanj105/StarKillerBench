@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"sync"
 
-	pb "agentbench/services/inventory/internal/genpb/v1"
+	pb "agentbench/services/inventory/api/v1"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"

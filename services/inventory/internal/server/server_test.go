@@ -16,7 +16,7 @@ import (
 	"context"
 	"testing"
 
-	pb "agentbench/services/inventory/internal/genpb/v1"
+	pb "agentbench/services/inventory/api/v1"
 	"agentbench/services/inventory/internal/server"
 
 	"google.golang.org/grpc/codes"

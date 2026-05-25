@@ -10,7 +10,7 @@ file_organization:
   directories:
     - services/inventory/cmd/inventory
     - services/inventory/internal/server
-    - services/inventory/internal/genpb
+    - services/inventory/api/v1
     - services/inventory/proto/v1
 
 interface:
