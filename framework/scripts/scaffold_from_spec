@@ -5,6 +5,8 @@ scaffold_from_spec <spec.yaml>
 Read the spec's `file_organization` and:
   - Create every directory in `directories`.
   - Run `go mod init <go_module>` in `service_dir` if go.mod doesn't exist.
+  - Ensure the repo's go.work includes this service (so cross-service
+    imports resolve via the workspace, no replace directives needed).
 
 This is a `do:` action; for the matching verification, see the
 `file_organization_matches_spec` checker.
@@ -31,3 +33,9 @@ if svc_dir and mod:
     gomod = Path(svc_dir) / "go.mod"
     if not gomod.exists():
         subprocess.run(["go", "mod", "init", mod], cwd=svc_dir, check=True)
+
+    # Make sure this service is part of the repo's Go workspace, so other
+    # services can `require` it without per-module `replace` directives.
+    if not Path("go.work").exists():
+        subprocess.run(["go", "work", "init"], check=True)
+    subprocess.run(["go", "work", "use", svc_dir], check=True)

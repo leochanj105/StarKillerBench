@@ -51,12 +51,9 @@ The test file `services/{{SERVICE_NAME}}/internal/server/server_test.go` is pre-
 
       import deppb "agentbench/services/<dep>/api/v1"
 
-- Add to your `go.mod` so Go can resolve the cross-module import:
+- **Do NOT add the upstream as a `require` in your `go.mod`**, and do NOT add a `replace` directive. The repo's `go.work` (already in place) puts all services in a Go workspace and resolves cross-module imports locally. A `require agentbench/services/<dep> v0.0.0` line triggers Go's module-path validator and fails the whole workspace with `malformed module path "agentbench/services/<dep>": missing dot in first path element`. The `require` block in your `go.mod` should only contain third-party modules (e.g. `google.golang.org/grpc`).
 
-      require agentbench/services/<dep> v0.0.0
-      replace agentbench/services/<dep> => ../<dep>
-
-Then `go mod tidy` resolves the imports. The pre-authored test file in `internal/server/server_test.go` shows exactly which upstream RPCs your handlers must call and with what arguments — its mocks define the interface your handlers receive via `NewServer(...)`.
+If `go mod tidy` re-adds a `require agentbench/services/<dep>` line, delete it. The pre-authored test file in `internal/server/server_test.go` shows exactly which upstream RPCs your handlers must call and with what arguments — its mocks define the interface your handlers receive via `NewServer(...)`.
 
 ## Constraints
 

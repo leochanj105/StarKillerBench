@@ -26,7 +26,7 @@ def sh(cmd: str) -> None:
     if r.returncode != 0:
         sys.exit(f"failed: {cmd}\nstdout:\n{r.stdout}\nstderr:\n{r.stderr}")
 
-sh(f"docker build -t {image} {svc_dir}")
+sh(f"make -C {svc_dir} image")
 sh(f"docker run -d --rm --name {container} -p {host_port}:8080 {image}")
 try:
     time.sleep(2)

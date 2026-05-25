@@ -127,9 +127,17 @@ def _bwrap_mounts(comp, scope):
         args += ["--bind", str(p), str(p)]
 
     # Read-only: each upstream service this component depends on. Exposes
-    # just the proto, generated stubs, and go.mod / go.sum so the agent can
-    # import the upstream's types via a `replace` directive in go.mod.
+    # just the public `api/v1` package and go.mod / go.sum so the agent can
+    # import the upstream's types. The repo-level go.work makes the
+    # workspace's modules resolvable without `replace` directives.
     args += _dependent_service_binds(comp)
+
+    # Read-only: the repo's go.work, so the agent's `go mod tidy` sees the
+    # workspace and resolves cross-service imports without trying to write
+    # to upstream modules' go.mod files.
+    gowork = ROOT / "go.work"
+    if gowork.exists():
+        args += ["--ro-bind", str(gowork), str(gowork)]
 
     # Re-bind specific files INSIDE the workspace to protect them.
     args += ["--tmpfs", str(comp / RUNNER_DIR)]                          # framework state → empty
