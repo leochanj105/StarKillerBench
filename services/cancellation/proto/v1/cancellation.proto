@@ -1,0 +1,15 @@
+syntax = "proto3";
+
+package cancellation.v1;
+
+option go_package = "agentbench/services/cancellation/api/v1;cancellationv1";
+
+service CancellationService {
+  rpc Cancel(CancelRequest) returns (CancelResponse);
+}
+
+message CancelRequest {
+  string booking_id = 1;
+}
+
+message CancelResponse {}

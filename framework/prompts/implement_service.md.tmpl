@@ -38,8 +38,11 @@ The test file `services/{{SERVICE_NAME}}/internal/server/server_test.go` is pre-
 
 ### 4. Build & deploy
 
-- `Makefile` with targets: `build` (`go generate ./... && go build ./...`), `test` (`go test ./...`), `image` (`docker build -t agentbench/{{SERVICE_NAME}}:dev .`).
+- `Makefile` with targets: `build` (`go generate ./... && go build ./...`), `test` (`go test ./...`), `image`.
+  - If `spec.dependent_interface` is empty: `image` target is `docker build -t agentbench/{{SERVICE_NAME}}:dev .` (build context = service dir).
+  - If `spec.dependent_interface` is non-empty: `image` target is `docker build -t agentbench/{{SERVICE_NAME}}:dev -f Dockerfile ../..` (build context = repo root, needed so the Dockerfile can COPY sibling services).
 - `Dockerfile` — multi-stage; final image `gcr.io/distroless/static-debian12`; exposes `50051` and `8080`.
+  - For cross-service builds, **do NOT `COPY go.work go.work`** from the repo root — that file may reference services your container doesn't include, breaking the build whenever a new service is added. Instead, COPY only this service and each entry in `spec.dependent_interface`, then generate a minimal `go.work` inline, e.g. `RUN printf 'go 1.25.4\n\nuse (\n\t./services/{{SERVICE_NAME}}\n\t./services/<dep>\n)\n' > /src/go.work`.
 - Update `go.mod` via `go mod tidy`.
 
 ### 5. Cross-service imports (only if `spec.dependent_interface` is non-empty)
