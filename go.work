@@ -5,4 +5,5 @@ use (
 	./services/cancellation
 	./services/inventory
 	./services/payment
+	./tests/integration
 )

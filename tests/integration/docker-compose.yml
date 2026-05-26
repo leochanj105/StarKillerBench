@@ -1,0 +1,41 @@
+# Brings up all four services on a default compose network so each container
+# can reach its dependencies via service-name DNS (matching the env-var
+# defaults baked into each cmd/main.go). Tests run on the host and connect
+# via host-published gRPC ports.
+
+services:
+  payment:
+    build:
+      context: ../../services/payment
+    container_name: payment
+    ports:
+      - "18101:50051"
+      - "18801:8080"
+
+  inventory:
+    build:
+      context: ../../services/inventory
+    container_name: inventory
+    ports:
+      - "18102:50051"
+      - "18802:8080"
+
+  booking:
+    build:
+      context: ../..
+      dockerfile: services/booking/Dockerfile
+    container_name: booking
+    depends_on: [payment, inventory]
+    ports:
+      - "18103:50051"
+      - "18803:8080"
+
+  cancellation:
+    build:
+      context: ../..
+      dockerfile: services/cancellation/Dockerfile
+    container_name: cancellation
+    depends_on: [booking, payment]
+    ports:
+      - "18104:50051"
+      - "18804:8080"

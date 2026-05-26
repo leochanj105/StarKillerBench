@@ -1,0 +1,38 @@
+#!/usr/bin/env bash
+# run_integration: bring up the 4-service compose stack, wait for every
+# /healthz, run the integration test binary, tear the stack down.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+cd "$REPO_ROOT"
+
+COMPOSE=(docker compose -f tests/integration/docker-compose.yml)
+
+cleanup() { "${COMPOSE[@]}" down -v --remove-orphans >/dev/null 2>&1 || true; }
+trap cleanup EXIT
+
+echo "==> building and starting compose stack"
+"${COMPOSE[@]}" up -d --build
+
+echo "==> waiting for /healthz on all four services"
+for port in 18801 18802 18803 18804; do
+    ok=0
+    for _ in $(seq 1 30); do
+        if curl -fsS "http://localhost:$port/healthz" >/dev/null 2>&1; then
+            ok=1
+            break
+        fi
+        sleep 1
+    done
+    if [ "$ok" != 1 ]; then
+        echo "service on host port $port did not become ready" >&2
+        "${COMPOSE[@]}" logs >&2 || true
+        exit 1
+    fi
+    echo "    port $port ready"
+done
+
+echo "==> go test"
+cd tests/integration
+exec go test -v ./...
