@@ -27,7 +27,7 @@ file_organization:
     - services/payment/cmd/payment
     - services/payment/internal/server
     - services/payment/internal/store
-    - services/payment/internal/genpb
+    - services/payment/api/v1
     - services/payment/proto/v1           # .proto file lives under the service
     - ...
 ```
@@ -100,13 +100,18 @@ For `kind: stateless`, omit `stores`.
 ## `dependent_interface`
 
 ```yaml
-dependent_interface:
-  - service: booking
-    rpc: GetBooking
-    purpose: Look up a booking by ID.
+dependent_interface: [payment, inventory]
 ```
 
-List of outbound RPC calls this service makes. Each entry: `service` + `rpc` + `purpose` (one line). Empty list `[]` for leaf services.
+A bare list of upstream service names. Empty `[]` for leaf services.
+
+Each name `<svc>` in the list implies:
+
+- The agent's Go code can `import "agentbench/services/<svc>/api/v1"`.
+- The framework ro-binds `services/<svc>/api/v1`, `services/<svc>/go.mod`, and `services/<svc>/go.sum` into the sandbox.
+- The agent must add `replace agentbench/services/<svc> => ../<svc>` to its own `go.mod`.
+
+That's the single auditable declaration of cross-service file access — read this list in a service's `SPEC.yaml` and you know exactly which other services it can import from.
 
 
 ---
@@ -119,16 +124,18 @@ summary: |
   exercised without an external integration. Not production-realistic; a
   behavior-shaped substitute.
 
+  v2 adds deterministic chaos: reserved `payment_token` values trigger
+  specific failure or latency behaviors. This lets the booking saga's
+  compensation paths and evaluation harnesses exercise non-happy-path
+  flows without nondeterminism.
+
 file_organization:
   service_dir: services/payment
   go_module: agentbench/services/payment
   directories:
     - services/payment/cmd/payment
     - services/payment/internal/server
-    - services/payment/internal/store
-    - services/payment/internal/config
-    - services/payment/internal/genpb
-    - services/payment/test
+    - services/payment/api/v1
     - services/payment/proto/v1
 
 interface:
@@ -190,6 +197,17 @@ error_semantics:
     condition: refund amount exceeds (captured - already refunded)
     code: FailedPrecondition
 
+  # ── Chaos-injected errors (v2). See `chaos` below for full semantics. ──
+  - rpc: Authorize
+    condition: payment_token equals "tok_decline"
+    code: FailedPrecondition
+  - rpc: Capture
+    condition: the auth_id was created from an Authorize whose payment_token was "tok_capture_fail"
+    code: FailedPrecondition
+  - rpc: Refund
+    condition: the auth_id was created from an Authorize whose payment_token was "tok_refund_fail"
+    code: FailedPrecondition
+
 state:
   kind: in_memory
   lifetime: per_process       # state is lost on restart, by design
@@ -204,5 +222,54 @@ state:
         currency: string
         status: string        # values: authorized | captured | voided
         refunded: int64       # total refunded so far; only meaningful after capture
+        chaos_mode: string    # "" | "capture_fail" | "refund_fail"
+                              # Set at Authorize from the payment_token; pins the
+                              # deterministic failure mode (if any) for later
+                              # Capture/Refund calls against this auth_id.
+                              # Does NOT affect Void, so Void compensation still
+                              # works after a tok_capture_fail Authorize.
 
 dependent_interface: []
+
+# ════════════════════════════════════════════════════════════════════════════
+# Chaos (v2): deterministic behavior injection via reserved payment_token
+# values. Tokens are matched verbatim (no case folding, no whitespace
+# trimming). Any token that doesn't match a reserved value behaves
+# identically to v1 — normal happy path. Only Authorize inspects the token;
+# Capture/Void/Refund derive their behavior from the auth_id's stored
+# chaos_mode (set at Authorize time).
+# ════════════════════════════════════════════════════════════════════════════
+chaos:
+  failure_tokens:
+    - token: tok_decline
+      effect: |
+        Authorize returns FailedPrecondition. No auth_id is allocated and
+        no state is written. Mirrors a real PSP card decline.
+    - token: tok_capture_fail
+      effect: |
+        Authorize succeeds, allocates an auth_id, and stores chaos_mode
+        = "capture_fail". Capture against that auth_id returns
+        FailedPrecondition without changing state; the auth stays in
+        `authorized` status so Void still succeeds. Mirrors a captured
+        auth that the bank rejects at settlement time, allowing the
+        booking saga's Void+Release compensation to run.
+    - token: tok_refund_fail
+      effect: |
+        Authorize and Capture succeed normally; the auth_id stores
+        chaos_mode = "refund_fail". Refund against that auth_id returns
+        FailedPrecondition on every call, regardless of amount or
+        accumulated refunds. Used to exercise the cancellation service's
+        error path.
+
+  latency_tokens:
+    - pattern: tok_slow_<ms>
+      effect: |
+        The Authorize call sleeps for <ms> milliseconds before returning,
+        then continues with normal success behavior (allocates auth_id,
+        writes state, returns OK). <ms> is parsed from the suffix as a
+        non-negative decimal integer up to 60000 (60s). A malformed
+        suffix (non-numeric, negative, out of range) makes the token
+        behave as an ordinary token: no sleep, normal success. Latency
+        applies only to the Authorize call that carries the token;
+        subsequent Capture/Void/Refund on the resulting auth_id run at
+        normal speed (the latency is not stored on the auth).

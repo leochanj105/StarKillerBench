@@ -399,7 +399,7 @@ const file_v1_payment_proto_rawDesc = "" +
 	"\tAuthorize\x12\x1c.payment.v1.AuthorizeRequest\x1a\x1d.payment.v1.AuthorizeResponse\x12B\n" +
 	"\aCapture\x12\x1a.payment.v1.CaptureRequest\x1a\x1b.payment.v1.CaptureResponse\x129\n" +
 	"\x04Void\x12\x17.payment.v1.VoidRequest\x1a\x18.payment.v1.VoidResponse\x12?\n" +
-	"\x06Refund\x12\x19.payment.v1.RefundRequest\x1a\x1a.payment.v1.RefundResponseB9Z7agentbench/services/payment/internal/genpb/v1;paymentv1b\x06proto3"
+	"\x06Refund\x12\x19.payment.v1.RefundRequest\x1a\x1a.payment.v1.RefundResponseB.Z,agentbench/services/payment/api/v1;paymentv1b\x06proto3"
 
 var (
 	file_v1_payment_proto_rawDescOnce sync.Once
