@@ -14,18 +14,34 @@ import (
 
 	pb "agentbench/services/inventory/api/v1"
 	"agentbench/services/inventory/internal/server"
+	"agentbench/services/inventory/internal/store"
 
 	"google.golang.org/grpc"
 )
 
 func main() {
+	// Default backend is Postgres (PG_DSN); fall back to the in-memory
+	// store for local dev when PG_DSN is unset.
+	srv := server.NewServer()
+	if dsn := os.Getenv("PG_DSN"); dsn != "" {
+		pg, err := store.NewPGStore(context.Background(), dsn)
+		if err != nil {
+			log.Fatalf("connect Postgres: %v", err)
+		}
+		defer pg.Close()
+		srv = server.NewServerWithStore(pg)
+		log.Printf("using Postgres backend")
+	} else {
+		log.Printf("PG_DSN unset; using in-memory backend")
+	}
+
 	grpcLis, err := net.Listen("tcp", ":50051")
 	if err != nil {
 		log.Fatalf("listen :50051: %v", err)
 	}
 
 	grpcSrv := grpc.NewServer()
-	pb.RegisterInventoryServiceServer(grpcSrv, server.NewServer())
+	pb.RegisterInventoryServiceServer(grpcSrv, srv)
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {

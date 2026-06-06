@@ -425,7 +425,7 @@ const file_v1_inventory_proto_rawDesc = "" +
 	"\bSetStock\x12\x1d.inventory.v1.SetStockRequest\x1a\x1e.inventory.v1.SetStockResponse\x12=\n" +
 	"\x04Hold\x12\x19.inventory.v1.HoldRequest\x1a\x1a.inventory.v1.HoldResponse\x12C\n" +
 	"\x06Commit\x12\x1b.inventory.v1.CommitRequest\x1a\x1c.inventory.v1.CommitResponse\x12F\n" +
-	"\aRelease\x12\x1c.inventory.v1.ReleaseRequest\x1a\x1d.inventory.v1.ReleaseResponseB=Z;agentbench/services/inventory/internal/genpb/v1;inventoryv1b\x06proto3"
+	"\aRelease\x12\x1c.inventory.v1.ReleaseRequest\x1a\x1d.inventory.v1.ReleaseResponseB2Z0agentbench/services/inventory/api/v1;inventoryv1b\x06proto3"
 
 var (
 	file_v1_inventory_proto_rawDescOnce sync.Once

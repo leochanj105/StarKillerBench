@@ -2,7 +2,15 @@ summary: |
   inventory tracks per-(hotel, room_type, date) room stock for the booking
   saga. An admin populates totals via SetStock; bookings reserve units via
   Hold and then either Commit (confirm the sale) or Release (cancel before
-  confirm). State lives in process memory and resets on restart.
+  confirm).
+
+  v2 moves state from process memory to Postgres. Stock and holds survive
+  restarts, and concurrent Holds against the same key serialize correctly
+  via row-level locks (no oversell). The RPC surface is unchanged from v1.
+
+  The v1 in-memory implementation is retained as `memStore` behind a
+  `Store` interface so v1 tests stay frozen and local dev can run without
+  Postgres.
 
 file_organization:
   service_dir: services/inventory
@@ -10,6 +18,8 @@ file_organization:
   directories:
     - services/inventory/cmd/inventory
     - services/inventory/internal/server
+    - services/inventory/internal/store
+    - services/inventory/migrations
     - services/inventory/api/v1
     - services/inventory/proto/v1
 
@@ -85,27 +95,54 @@ error_semantics:
     condition: hold has already been committed or released
     code: FailedPrecondition
 
+  # ── v2: concurrency contract (locked down by server_v2_test.go) ──────
+  # When N concurrent Hold calls race for the last available unit, the
+  # backing store MUST serialize them so that exactly one succeeds and
+  # the rest get FailedPrecondition. Implementations using the Postgres
+  # backend do this by acquiring a row-level lock on the stock row
+  # (SELECT … FOR UPDATE) inside the Hold transaction.
+
 state:
-  kind: in_memory
-  lifetime: per_process
+  # v2 default backend is Postgres; the v1 in-memory backend is kept as
+  # an alternate implementation behind the same `Store` interface so
+  # the v1 test file (server_test.go) continues to pin its behavior.
+  backends:
+    - name: memStore
+      kind: in_memory
+      lifetime: per_process
+      used_by: ["v1 unit tests (server_test.go)", "local dev when PG_DSN is unset"]
+    - name: pgStore
+      kind: postgres
+      version: ">= 14"
+      lifetime: durable
+      used_by: ["v2 unit tests (server_v2_test.go)", "production / integration stack"]
+      connection_env: PG_DSN
+      schema_source: services/inventory/migrations/0001_init.sql
+      schema_applied_by: external   # not by the service at startup; loaded
+                                    # externally (compose init script in
+                                    # tests, a migration tool in production)
+
+  # Logical schema. Both backends must present the same observable
+  # behavior for the v1 RPC contract; the table definitions below match
+  # the in-memory map shape one-to-one.
   stores:
     stock:
-      kind: map
       key:
-        name: stock_key
-        type: string         # "<hotel_id>|<room_type>|<date>"
+        - hotel_id: text
+        - room_type: text
+        - date: text
       value:
         total: int32         # set by SetStock
         sold: int32          # incremented on Commit
         held: int32          # incremented on Hold, decremented on Commit/Release
     holds:
-      kind: map
       key:
-        name: hold_id
-        type: string
+        - hold_id: text      # opaque server-generated id
       value:
-        stock_key: string
+        hotel_id: text
+        room_type: text
+        date: text
         quantity: int32
-        status: string       # held | committed | released
+        status: text         # held | committed | released
 
 dependent_interface: []

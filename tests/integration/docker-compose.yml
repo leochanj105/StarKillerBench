@@ -4,6 +4,27 @@
 # via host-published gRPC ports.
 
 services:
+  # Postgres backing for inventory v2. Schema is applied via the
+  # docker-entrypoint-initdb.d hook so it's ready before the first
+  # inventory query. Host port 15432 lets v2 unit tests on the host
+  # also point at this same DB via PG_DSN.
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_PASSWORD: inv
+      POSTGRES_USER: inv
+      POSTGRES_DB: inventory
+    ports:
+      - "15432:5432"
+    volumes:
+      - ../../services/inventory/migrations/0001_init.sql:/docker-entrypoint-initdb.d/0001_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U inv -d inventory"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
   payment:
     build:
       context: ../../services/payment
@@ -16,6 +37,11 @@ services:
     build:
       context: ../../services/inventory
     container_name: inventory
+    environment:
+      PG_DSN: postgres://inv:inv@postgres:5432/inventory?sslmode=disable
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "18102:50051"
       - "18802:8080"

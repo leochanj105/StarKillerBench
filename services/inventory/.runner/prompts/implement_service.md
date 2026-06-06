@@ -34,12 +34,15 @@ In `services/inventory/`:
 
 ### 3. Unit tests (pre-existing)
 
-The test file `services/inventory/internal/server/server_test.go` is pre-written and audited. **Do not modify or delete it.** Inspect it to learn the contract your handlers must satisfy — specifically the constructor name (`server.NewServer()`), method signatures, and the gRPC error codes asserted for each negative scenario.
+All test files matching `services/inventory/internal/server/*_test.go` are pre-written and audited. **Do not modify, delete, or add to them.** There may be multiple — one per version increment (e.g. `server_test.go` for v1, `server_v2_test.go` for chaos features). Inspect every `*_test.go` file in that directory to learn the full contract your handlers must satisfy: constructor name (`server.NewServer()`), method signatures, gRPC error codes for each negative scenario, and any version-specific behavior (failure injection, latency, etc.). Your implementation must make every test pass.
 
 ### 4. Build & deploy
 
-- `Makefile` with targets: `build` (`go generate ./... && go build ./...`), `test` (`go test ./...`), `image` (`docker build -t agentbench/inventory:dev .`).
+- `Makefile` with targets: `build` (`go generate ./... && go build ./...`), `test` (`go test ./...`), `image`.
+  - If `spec.dependent_interface` is empty: `image` target is `docker build -t agentbench/inventory:dev .` (build context = service dir).
+  - If `spec.dependent_interface` is non-empty: `image` target is `docker build -t agentbench/inventory:dev -f Dockerfile ../..` (build context = repo root, needed so the Dockerfile can COPY sibling services).
 - `Dockerfile` — multi-stage; final image `gcr.io/distroless/static-debian12`; exposes `50051` and `8080`.
+  - For cross-service builds, **do NOT `COPY go.work go.work`** from the repo root — that file may reference services your container doesn't include, breaking the build whenever a new service is added. Instead, COPY only this service and each entry in `spec.dependent_interface`, then generate a minimal `go.work` inline, e.g. `RUN printf 'go 1.25.4\n\nuse (\n\t./services/inventory\n\t./services/<dep>\n)\n' > /src/go.work`.
 - Update `go.mod` via `go mod tidy`.
 
 ### 5. Cross-service imports (only if `spec.dependent_interface` is non-empty)
@@ -51,12 +54,9 @@ The test file `services/inventory/internal/server/server_test.go` is pre-written
 
       import deppb "agentbench/services/<dep>/api/v1"
 
-- Add to your `go.mod` so Go can resolve the cross-module import:
+- **Do NOT add the upstream as a `require` in your `go.mod`**, and do NOT add a `replace` directive. The repo's `go.work` (already in place) puts all services in a Go workspace and resolves cross-module imports locally. A `require agentbench/services/<dep> v0.0.0` line triggers Go's module-path validator and fails the whole workspace with `malformed module path "agentbench/services/<dep>": missing dot in first path element`. The `require` block in your `go.mod` should only contain third-party modules (e.g. `google.golang.org/grpc`).
 
-      require agentbench/services/<dep> v0.0.0
-      replace agentbench/services/<dep> => ../<dep>
-
-Then `go mod tidy` resolves the imports. The pre-authored test file in `internal/server/server_test.go` shows exactly which upstream RPCs your handlers must call and with what arguments — its mocks define the interface your handlers receive via `NewServer(...)`.
+If `go mod tidy` re-adds a `require agentbench/services/<dep>` line, delete it. The pre-authored test files in `internal/server/*_test.go` show exactly which upstream RPCs your handlers must call and with what arguments — their mocks define the interface your handlers receive via `NewServer(...)`.
 
 ## Constraints
 

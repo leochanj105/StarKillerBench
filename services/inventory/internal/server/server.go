@@ -2,76 +2,58 @@ package server
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/hex"
-	"fmt"
-	"sync"
+	"errors"
 
 	pb "agentbench/services/inventory/api/v1"
+	"agentbench/services/inventory/internal/store"
 
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 )
 
-type stockRecord struct {
-	total int32
-	sold  int32
-	held  int32
-}
-
-const (
-	holdStatusHeld      = "held"
-	holdStatusCommitted = "committed"
-	holdStatusReleased  = "released"
-)
-
-type holdRecord struct {
-	stockKey string
-	quantity int32
-	status   string
-}
-
+// Server implements pb.InventoryServiceServer. It validates request shapes,
+// delegates state changes to a Store, and maps the store's sentinel errors
+// to gRPC status codes per SPEC.error_semantics.
 type Server struct {
 	pb.UnimplementedInventoryServiceServer
 
-	mu     sync.Mutex
-	stock  map[string]*stockRecord
-	holds  map[string]*holdRecord
+	store store.Store
 }
 
+// NewServer returns a Server backed by the in-memory store (v1 default;
+// used by unit tests and local dev without Postgres).
 func NewServer() *Server {
-	return &Server{
-		stock: make(map[string]*stockRecord),
-		holds: make(map[string]*holdRecord),
-	}
+	return &Server{store: store.NewMemStore()}
 }
 
-func stockKey(hotelID, roomType, date string) string {
-	return fmt.Sprintf("%s|%s|%s", hotelID, roomType, date)
+// NewServerWithStore returns a Server backed by the given store (used to
+// wire the Postgres backend in v2).
+func NewServerWithStore(s store.Store) *Server {
+	return &Server{store: s}
 }
 
-func newHoldID() string {
-	var b [16]byte
-	if _, err := rand.Read(b[:]); err != nil {
-		panic(err)
+// mapErr translates store sentinel errors to gRPC status errors.
+func mapErr(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, store.ErrNotFound):
+		return status.Error(codes.NotFound, err.Error())
+	case errors.Is(err, store.ErrInsufficient):
+		return status.Error(codes.FailedPrecondition, err.Error())
+	case errors.Is(err, store.ErrConsumed):
+		return status.Error(codes.FailedPrecondition, err.Error())
+	default:
+		return status.Error(codes.Internal, err.Error())
 	}
-	return hex.EncodeToString(b[:])
 }
 
 func (s *Server) SetStock(ctx context.Context, req *pb.SetStockRequest) (*pb.SetStockResponse, error) {
 	if req.GetQuantity() < 0 {
 		return nil, status.Error(codes.InvalidArgument, "quantity must be non-negative")
 	}
-	key := stockKey(req.GetHotelId(), req.GetRoomType(), req.GetDate())
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	rec, ok := s.stock[key]
-	if !ok {
-		s.stock[key] = &stockRecord{total: req.GetQuantity()}
-	} else {
-		rec.total = req.GetQuantity()
+	if err := s.store.SetStock(ctx, req.GetHotelId(), req.GetRoomType(), req.GetDate(), req.GetQuantity()); err != nil {
+		return nil, mapErr(err)
 	}
 	return &pb.SetStockResponse{}, nil
 }
@@ -80,67 +62,23 @@ func (s *Server) Hold(ctx context.Context, req *pb.HoldRequest) (*pb.HoldRespons
 	if req.GetQuantity() <= 0 {
 		return nil, status.Error(codes.InvalidArgument, "quantity must be positive")
 	}
-	key := stockKey(req.GetHotelId(), req.GetRoomType(), req.GetDate())
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	rec, ok := s.stock[key]
-	if !ok {
-		return nil, status.Errorf(codes.NotFound, "no stock for %s", key)
-	}
-	available := rec.total - rec.sold - rec.held
-	if available < req.GetQuantity() {
-		return nil, status.Errorf(codes.FailedPrecondition, "insufficient stock: available=%d requested=%d", available, req.GetQuantity())
-	}
-	rec.held += req.GetQuantity()
-
-	id := newHoldID()
-	s.holds[id] = &holdRecord{
-		stockKey: key,
-		quantity: req.GetQuantity(),
-		status:   holdStatusHeld,
+	id, err := s.store.Hold(ctx, req.GetHotelId(), req.GetRoomType(), req.GetDate(), req.GetQuantity())
+	if err != nil {
+		return nil, mapErr(err)
 	}
 	return &pb.HoldResponse{HoldId: id}, nil
 }
 
 func (s *Server) Commit(ctx context.Context, req *pb.CommitRequest) (*pb.CommitResponse, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	h, ok := s.holds[req.GetHoldId()]
-	if !ok {
-		return nil, status.Errorf(codes.NotFound, "unknown hold_id")
+	if err := s.store.Commit(ctx, req.GetHoldId()); err != nil {
+		return nil, mapErr(err)
 	}
-	if h.status != holdStatusHeld {
-		return nil, status.Errorf(codes.FailedPrecondition, "hold already %s", h.status)
-	}
-	rec, ok := s.stock[h.stockKey]
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "stock for hold missing")
-	}
-	rec.held -= h.quantity
-	rec.sold += h.quantity
-	h.status = holdStatusCommitted
 	return &pb.CommitResponse{}, nil
 }
 
 func (s *Server) Release(ctx context.Context, req *pb.ReleaseRequest) (*pb.ReleaseResponse, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	h, ok := s.holds[req.GetHoldId()]
-	if !ok {
-		return nil, status.Errorf(codes.NotFound, "unknown hold_id")
+	if err := s.store.Release(ctx, req.GetHoldId()); err != nil {
+		return nil, mapErr(err)
 	}
-	if h.status != holdStatusHeld {
-		return nil, status.Errorf(codes.FailedPrecondition, "hold already %s", h.status)
-	}
-	rec, ok := s.stock[h.stockKey]
-	if !ok {
-		return nil, status.Errorf(codes.Internal, "stock for hold missing")
-	}
-	rec.held -= h.quantity
-	h.status = holdStatusReleased
 	return &pb.ReleaseResponse{}, nil
 }

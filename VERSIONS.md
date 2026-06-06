@@ -53,8 +53,27 @@ tests. Previous versions' test files are not modified.
 - In-memory `stock` + `holds` maps; no external store
 - Unit tests: `services/inventory/internal/server/server_test.go`
 
-### v2 — _planned: Postgres durability + Redis hot-read cache_
-Deferred. See STATUS.md for the gap description.
+### v2 — Postgres-backed durability and concurrency safety
+- Switches stock + holds from in-memory maps to Postgres (`pgStore`).
+- Adds a `Store` interface; the v1 in-memory backend is retained as
+  `memStore` so the v1 test file stays frozen and dev runs without
+  Postgres.
+- New constructor `NewServerWithStore(s Store)`; `NewServer()` defaults
+  to `memStore` (v1 behavior preserved).
+- Concurrent `Hold` against the last unit is serialized via row-level
+  locks (`SELECT … FOR UPDATE`); never oversells.
+- Schema in `services/inventory/migrations/0001_init.sql`, applied
+  externally (not by the service).
+- New `PG_DSN` environment variable for connection; service refuses to
+  start if it can't reach the DB.
+- Postgres added to the integration `docker-compose.yml`; v2 unit tests
+  skip cleanly when `PG_DSN` is unset (light dev loop unaffected).
+- Unit tests: `services/inventory/internal/server/server_v2_test.go`
+- Integration tests: no changes (RPC contract unchanged; existing saga
+  tests verify behavior end-to-end against the Postgres-backed image).
+
+### v3 — _planned: Redis hot-read cache_
+Deferred.
 
 ---
 
