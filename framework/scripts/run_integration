@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# run_integration: bring up the 4-service compose stack, wait for every
-# /healthz, run the integration test binary, tear the stack down.
+# run_integration: bring up the compose stack (4 services + Postgres), wait
+# for every /healthz, run the store-backed unit tests and the cross-service
+# integration tests against the live stack, then tear it down.
 
 set -euo pipefail
 
@@ -33,6 +34,14 @@ for port in 18801 18802 18803 18804; do
     echo "    port $port ready"
 done
 
-echo "==> go test"
-cd tests/integration
-exec go test -v ./...
+# Store-backed unit tests that need a live database. PG_DSN points at the
+# compose Postgres (host-published on 15432). Without this, these tests
+# skip themselves — so running them here is the only place they actually
+# execute. Add a service's store-backed package below when it gains one.
+export PG_DSN="postgres://inv:inv@localhost:15432/inventory?sslmode=disable"
+
+echo "==> store-backed unit tests (inventory v2, against compose Postgres)"
+( cd services/inventory && go test -v -run TestV2 ./internal/server/ )
+
+echo "==> cross-service integration tests"
+( cd tests/integration && go test -v ./... )
