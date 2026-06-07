@@ -105,4 +105,20 @@ func (m *memStore) Release(_ context.Context, holdID string) error {
 	return nil
 }
 
+func (m *memStore) ReturnStock(_ context.Context, hotel, room, date string, quantity int32) error {
+	key := memKey(hotel, room, date)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	rec, ok := m.stock[key]
+	if !ok {
+		return ErrNotFound
+	}
+	if quantity > rec.sold {
+		return ErrExceedsSold
+	}
+	rec.sold -= quantity
+	return nil
+}
+
 func (m *memStore) Close() {}

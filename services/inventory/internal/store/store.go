@@ -28,6 +28,9 @@ var (
 	ErrInsufficient = errors.New("insufficient stock")
 	// ErrConsumed: the hold has already been committed or released.
 	ErrConsumed = errors.New("hold already consumed")
+	// ErrExceedsSold: ReturnStock quantity exceeds the currently sold count
+	// for the key — you can't un-sell units that were never sold.
+	ErrExceedsSold = errors.New("quantity exceeds sold")
 )
 
 // Store is the persistence contract for inventory. Implementations must
@@ -44,6 +47,10 @@ type Store interface {
 	Commit(ctx context.Context, holdID string) error
 	// Release returns a held reservation to available and consumes the hold.
 	Release(ctx context.Context, holdID string) error
+	// ReturnStock decrements sold for the key by quantity (post-commit undo),
+	// returning previously-sold units to availability. quantity is assumed
+	// positive (validated by the caller).
+	ReturnStock(ctx context.Context, hotel, room, date string, quantity int32) error
 	// Close releases any resources held by the store.
 	Close()
 }

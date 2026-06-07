@@ -78,6 +78,13 @@ func (m *mockInventory) Release(ctx context.Context, in *inventorypb.ReleaseRequ
 	return &inventorypb.ReleaseResponse{}, nil
 }
 
+// ReturnStock satisfies the InventoryServiceClient interface (gained in
+// inventory v3). The booking saga never calls it; this is a no-op so the
+// mock keeps compiling against the wider interface.
+func (m *mockInventory) ReturnStock(ctx context.Context, in *inventorypb.ReturnStockRequest, opts ...grpc.CallOption) (*inventorypb.ReturnStockResponse, error) {
+	return &inventorypb.ReturnStockResponse{}, nil
+}
+
 type mockPayment struct {
 	AuthorizeFn func(ctx context.Context, in *paymentpb.AuthorizeRequest, opts ...grpc.CallOption) (*paymentpb.AuthorizeResponse, error)
 	CaptureFn   func(ctx context.Context, in *paymentpb.CaptureRequest, opts ...grpc.CallOption) (*paymentpb.CaptureResponse, error)

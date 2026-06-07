@@ -19,10 +19,11 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	InventoryService_SetStock_FullMethodName = "/inventory.v1.InventoryService/SetStock"
-	InventoryService_Hold_FullMethodName     = "/inventory.v1.InventoryService/Hold"
-	InventoryService_Commit_FullMethodName   = "/inventory.v1.InventoryService/Commit"
-	InventoryService_Release_FullMethodName  = "/inventory.v1.InventoryService/Release"
+	InventoryService_SetStock_FullMethodName    = "/inventory.v1.InventoryService/SetStock"
+	InventoryService_Hold_FullMethodName        = "/inventory.v1.InventoryService/Hold"
+	InventoryService_Commit_FullMethodName      = "/inventory.v1.InventoryService/Commit"
+	InventoryService_Release_FullMethodName     = "/inventory.v1.InventoryService/Release"
+	InventoryService_ReturnStock_FullMethodName = "/inventory.v1.InventoryService/ReturnStock"
 )
 
 // InventoryServiceClient is the client API for InventoryService service.
@@ -33,6 +34,7 @@ type InventoryServiceClient interface {
 	Hold(ctx context.Context, in *HoldRequest, opts ...grpc.CallOption) (*HoldResponse, error)
 	Commit(ctx context.Context, in *CommitRequest, opts ...grpc.CallOption) (*CommitResponse, error)
 	Release(ctx context.Context, in *ReleaseRequest, opts ...grpc.CallOption) (*ReleaseResponse, error)
+	ReturnStock(ctx context.Context, in *ReturnStockRequest, opts ...grpc.CallOption) (*ReturnStockResponse, error)
 }
 
 type inventoryServiceClient struct {
@@ -83,6 +85,16 @@ func (c *inventoryServiceClient) Release(ctx context.Context, in *ReleaseRequest
 	return out, nil
 }
 
+func (c *inventoryServiceClient) ReturnStock(ctx context.Context, in *ReturnStockRequest, opts ...grpc.CallOption) (*ReturnStockResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ReturnStockResponse)
+	err := c.cc.Invoke(ctx, InventoryService_ReturnStock_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // InventoryServiceServer is the server API for InventoryService service.
 // All implementations must embed UnimplementedInventoryServiceServer
 // for forward compatibility.
@@ -91,6 +103,7 @@ type InventoryServiceServer interface {
 	Hold(context.Context, *HoldRequest) (*HoldResponse, error)
 	Commit(context.Context, *CommitRequest) (*CommitResponse, error)
 	Release(context.Context, *ReleaseRequest) (*ReleaseResponse, error)
+	ReturnStock(context.Context, *ReturnStockRequest) (*ReturnStockResponse, error)
 	mustEmbedUnimplementedInventoryServiceServer()
 }
 
@@ -112,6 +125,9 @@ func (UnimplementedInventoryServiceServer) Commit(context.Context, *CommitReques
 }
 func (UnimplementedInventoryServiceServer) Release(context.Context, *ReleaseRequest) (*ReleaseResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method Release not implemented")
+}
+func (UnimplementedInventoryServiceServer) ReturnStock(context.Context, *ReturnStockRequest) (*ReturnStockResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method ReturnStock not implemented")
 }
 func (UnimplementedInventoryServiceServer) mustEmbedUnimplementedInventoryServiceServer() {}
 func (UnimplementedInventoryServiceServer) testEmbeddedByValue()                          {}
@@ -206,6 +222,24 @@ func _InventoryService_Release_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _InventoryService_ReturnStock_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ReturnStockRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(InventoryServiceServer).ReturnStock(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: InventoryService_ReturnStock_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(InventoryServiceServer).ReturnStock(ctx, req.(*ReturnStockRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // InventoryService_ServiceDesc is the grpc.ServiceDesc for InventoryService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -228,6 +262,10 @@ var InventoryService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "Release",
 			Handler:    _InventoryService_Release_Handler,
+		},
+		{
+			MethodName: "ReturnStock",
+			Handler:    _InventoryService_ReturnStock_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

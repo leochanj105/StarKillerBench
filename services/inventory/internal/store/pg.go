@@ -102,6 +102,41 @@ func (p *PGStore) Release(ctx context.Context, holdID string) error {
 	return p.consume(ctx, holdID, statusReleased)
 }
 
+// ReturnStock decrements sold for the key by quantity, returning sold units
+// to availability. The stock row is locked FOR UPDATE so the read-check-write
+// against sold serializes with concurrent operations on the same key.
+func (p *PGStore) ReturnStock(ctx context.Context, hotel, room, date string, quantity int32) error {
+	tx, err := p.pool.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var sold int32
+	err = tx.QueryRow(ctx, `
+		SELECT sold FROM stock
+		WHERE hotel_id = $1 AND room_type = $2 AND date = $3
+		FOR UPDATE`,
+		hotel, room, date).Scan(&sold)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return err
+	}
+	if quantity > sold {
+		return ErrExceedsSold
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE stock SET sold = sold - $4
+		WHERE hotel_id = $1 AND room_type = $2 AND date = $3`,
+		hotel, room, date, quantity); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // consume transitions a held hold to a terminal status. For committed, the
 // quantity moves from held to sold; for released, it returns to available
 // (held is decremented). The hold row is locked FOR UPDATE so two

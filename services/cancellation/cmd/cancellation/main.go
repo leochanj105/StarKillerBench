@@ -16,6 +16,7 @@ import (
 	bookingpb "agentbench/services/booking/api/v1"
 	pb "agentbench/services/cancellation/api/v1"
 	"agentbench/services/cancellation/internal/server"
+	inventorypb "agentbench/services/inventory/api/v1"
 	paymentpb "agentbench/services/payment/api/v1"
 
 	"google.golang.org/grpc"
@@ -25,6 +26,7 @@ import (
 func main() {
 	bookingAddr := envOr("BOOKING_ADDR", "booking:50051")
 	paymentAddr := envOr("PAYMENT_ADDR", "payment:50051")
+	inventoryAddr := envOr("INVENTORY_ADDR", "inventory:50051")
 
 	bookingConn, err := grpc.NewClient(bookingAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
@@ -38,9 +40,16 @@ func main() {
 	}
 	defer paymentConn.Close()
 
-	srv := server.NewServer(
+	inventoryConn, err := grpc.NewClient(inventoryAddr, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		log.Fatalf("dial inventory: %v", err)
+	}
+	defer inventoryConn.Close()
+
+	srv := server.NewServerWithInventory(
 		bookingpb.NewBookingServiceClient(bookingConn),
 		paymentpb.NewPaymentServiceClient(paymentConn),
+		inventorypb.NewInventoryServiceClient(inventoryConn),
 	)
 
 	grpcServer := grpc.NewServer()

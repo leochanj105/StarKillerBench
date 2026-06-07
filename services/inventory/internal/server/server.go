@@ -43,6 +43,8 @@ func mapErr(err error) error {
 		return status.Error(codes.FailedPrecondition, err.Error())
 	case errors.Is(err, store.ErrConsumed):
 		return status.Error(codes.FailedPrecondition, err.Error())
+	case errors.Is(err, store.ErrExceedsSold):
+		return status.Error(codes.FailedPrecondition, err.Error())
 	default:
 		return status.Error(codes.Internal, err.Error())
 	}
@@ -81,4 +83,14 @@ func (s *Server) Release(ctx context.Context, req *pb.ReleaseRequest) (*pb.Relea
 		return nil, mapErr(err)
 	}
 	return &pb.ReleaseResponse{}, nil
+}
+
+func (s *Server) ReturnStock(ctx context.Context, req *pb.ReturnStockRequest) (*pb.ReturnStockResponse, error) {
+	if req.GetQuantity() <= 0 {
+		return nil, status.Error(codes.InvalidArgument, "quantity must be positive")
+	}
+	if err := s.store.ReturnStock(ctx, req.GetHotelId(), req.GetRoomType(), req.GetDate(), req.GetQuantity()); err != nil {
+		return nil, mapErr(err)
+	}
+	return &pb.ReturnStockResponse{}, nil
 }

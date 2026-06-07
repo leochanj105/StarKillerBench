@@ -397,6 +397,110 @@ func (*ReleaseResponse) Descriptor() ([]byte, []int) {
 	return file_v1_inventory_proto_rawDescGZIP(), []int{7}
 }
 
+type ReturnStockRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	HotelId       string                 `protobuf:"bytes,1,opt,name=hotel_id,json=hotelId,proto3" json:"hotel_id,omitempty"`
+	RoomType      string                 `protobuf:"bytes,2,opt,name=room_type,json=roomType,proto3" json:"room_type,omitempty"`
+	Date          string                 `protobuf:"bytes,3,opt,name=date,proto3" json:"date,omitempty"`
+	Quantity      int32                  `protobuf:"varint,4,opt,name=quantity,proto3" json:"quantity,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReturnStockRequest) Reset() {
+	*x = ReturnStockRequest{}
+	mi := &file_v1_inventory_proto_msgTypes[8]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReturnStockRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReturnStockRequest) ProtoMessage() {}
+
+func (x *ReturnStockRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_inventory_proto_msgTypes[8]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReturnStockRequest.ProtoReflect.Descriptor instead.
+func (*ReturnStockRequest) Descriptor() ([]byte, []int) {
+	return file_v1_inventory_proto_rawDescGZIP(), []int{8}
+}
+
+func (x *ReturnStockRequest) GetHotelId() string {
+	if x != nil {
+		return x.HotelId
+	}
+	return ""
+}
+
+func (x *ReturnStockRequest) GetRoomType() string {
+	if x != nil {
+		return x.RoomType
+	}
+	return ""
+}
+
+func (x *ReturnStockRequest) GetDate() string {
+	if x != nil {
+		return x.Date
+	}
+	return ""
+}
+
+func (x *ReturnStockRequest) GetQuantity() int32 {
+	if x != nil {
+		return x.Quantity
+	}
+	return 0
+}
+
+type ReturnStockResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *ReturnStockResponse) Reset() {
+	*x = ReturnStockResponse{}
+	mi := &file_v1_inventory_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *ReturnStockResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*ReturnStockResponse) ProtoMessage() {}
+
+func (x *ReturnStockResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_v1_inventory_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use ReturnStockResponse.ProtoReflect.Descriptor instead.
+func (*ReturnStockResponse) Descriptor() ([]byte, []int) {
+	return file_v1_inventory_proto_rawDescGZIP(), []int{9}
+}
+
 var File_v1_inventory_proto protoreflect.FileDescriptor
 
 const file_v1_inventory_proto_rawDesc = "" +
@@ -420,12 +524,19 @@ const file_v1_inventory_proto_rawDesc = "" +
 	"\x0eCommitResponse\")\n" +
 	"\x0eReleaseRequest\x12\x17\n" +
 	"\ahold_id\x18\x01 \x01(\tR\x06holdId\"\x11\n" +
-	"\x0fReleaseResponse2\xa9\x02\n" +
+	"\x0fReleaseResponse\"|\n" +
+	"\x12ReturnStockRequest\x12\x19\n" +
+	"\bhotel_id\x18\x01 \x01(\tR\ahotelId\x12\x1b\n" +
+	"\troom_type\x18\x02 \x01(\tR\broomType\x12\x12\n" +
+	"\x04date\x18\x03 \x01(\tR\x04date\x12\x1a\n" +
+	"\bquantity\x18\x04 \x01(\x05R\bquantity\"\x15\n" +
+	"\x13ReturnStockResponse2\xfd\x02\n" +
 	"\x10InventoryService\x12I\n" +
 	"\bSetStock\x12\x1d.inventory.v1.SetStockRequest\x1a\x1e.inventory.v1.SetStockResponse\x12=\n" +
 	"\x04Hold\x12\x19.inventory.v1.HoldRequest\x1a\x1a.inventory.v1.HoldResponse\x12C\n" +
 	"\x06Commit\x12\x1b.inventory.v1.CommitRequest\x1a\x1c.inventory.v1.CommitResponse\x12F\n" +
-	"\aRelease\x12\x1c.inventory.v1.ReleaseRequest\x1a\x1d.inventory.v1.ReleaseResponseB2Z0agentbench/services/inventory/api/v1;inventoryv1b\x06proto3"
+	"\aRelease\x12\x1c.inventory.v1.ReleaseRequest\x1a\x1d.inventory.v1.ReleaseResponse\x12R\n" +
+	"\vReturnStock\x12 .inventory.v1.ReturnStockRequest\x1a!.inventory.v1.ReturnStockResponseB2Z0agentbench/services/inventory/api/v1;inventoryv1b\x06proto3"
 
 var (
 	file_v1_inventory_proto_rawDescOnce sync.Once
@@ -439,28 +550,32 @@ func file_v1_inventory_proto_rawDescGZIP() []byte {
 	return file_v1_inventory_proto_rawDescData
 }
 
-var file_v1_inventory_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
+var file_v1_inventory_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_v1_inventory_proto_goTypes = []any{
-	(*SetStockRequest)(nil),  // 0: inventory.v1.SetStockRequest
-	(*SetStockResponse)(nil), // 1: inventory.v1.SetStockResponse
-	(*HoldRequest)(nil),      // 2: inventory.v1.HoldRequest
-	(*HoldResponse)(nil),     // 3: inventory.v1.HoldResponse
-	(*CommitRequest)(nil),    // 4: inventory.v1.CommitRequest
-	(*CommitResponse)(nil),   // 5: inventory.v1.CommitResponse
-	(*ReleaseRequest)(nil),   // 6: inventory.v1.ReleaseRequest
-	(*ReleaseResponse)(nil),  // 7: inventory.v1.ReleaseResponse
+	(*SetStockRequest)(nil),     // 0: inventory.v1.SetStockRequest
+	(*SetStockResponse)(nil),    // 1: inventory.v1.SetStockResponse
+	(*HoldRequest)(nil),         // 2: inventory.v1.HoldRequest
+	(*HoldResponse)(nil),        // 3: inventory.v1.HoldResponse
+	(*CommitRequest)(nil),       // 4: inventory.v1.CommitRequest
+	(*CommitResponse)(nil),      // 5: inventory.v1.CommitResponse
+	(*ReleaseRequest)(nil),      // 6: inventory.v1.ReleaseRequest
+	(*ReleaseResponse)(nil),     // 7: inventory.v1.ReleaseResponse
+	(*ReturnStockRequest)(nil),  // 8: inventory.v1.ReturnStockRequest
+	(*ReturnStockResponse)(nil), // 9: inventory.v1.ReturnStockResponse
 }
 var file_v1_inventory_proto_depIdxs = []int32{
 	0, // 0: inventory.v1.InventoryService.SetStock:input_type -> inventory.v1.SetStockRequest
 	2, // 1: inventory.v1.InventoryService.Hold:input_type -> inventory.v1.HoldRequest
 	4, // 2: inventory.v1.InventoryService.Commit:input_type -> inventory.v1.CommitRequest
 	6, // 3: inventory.v1.InventoryService.Release:input_type -> inventory.v1.ReleaseRequest
-	1, // 4: inventory.v1.InventoryService.SetStock:output_type -> inventory.v1.SetStockResponse
-	3, // 5: inventory.v1.InventoryService.Hold:output_type -> inventory.v1.HoldResponse
-	5, // 6: inventory.v1.InventoryService.Commit:output_type -> inventory.v1.CommitResponse
-	7, // 7: inventory.v1.InventoryService.Release:output_type -> inventory.v1.ReleaseResponse
-	4, // [4:8] is the sub-list for method output_type
-	0, // [0:4] is the sub-list for method input_type
+	8, // 4: inventory.v1.InventoryService.ReturnStock:input_type -> inventory.v1.ReturnStockRequest
+	1, // 5: inventory.v1.InventoryService.SetStock:output_type -> inventory.v1.SetStockResponse
+	3, // 6: inventory.v1.InventoryService.Hold:output_type -> inventory.v1.HoldResponse
+	5, // 7: inventory.v1.InventoryService.Commit:output_type -> inventory.v1.CommitResponse
+	7, // 8: inventory.v1.InventoryService.Release:output_type -> inventory.v1.ReleaseResponse
+	9, // 9: inventory.v1.InventoryService.ReturnStock:output_type -> inventory.v1.ReturnStockResponse
+	5, // [5:10] is the sub-list for method output_type
+	0, // [0:5] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -477,7 +592,7 @@ func file_v1_inventory_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_v1_inventory_proto_rawDesc), len(file_v1_inventory_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   8,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

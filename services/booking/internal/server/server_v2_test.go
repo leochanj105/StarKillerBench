@@ -70,6 +70,9 @@ func (m *safeInventory) Commit(ctx context.Context, in *inventorypb.CommitReques
 func (m *safeInventory) Release(ctx context.Context, in *inventorypb.ReleaseRequest, opts ...grpc.CallOption) (*inventorypb.ReleaseResponse, error) {
 	return &inventorypb.ReleaseResponse{}, nil
 }
+func (m *safeInventory) ReturnStock(ctx context.Context, in *inventorypb.ReturnStockRequest, opts ...grpc.CallOption) (*inventorypb.ReturnStockResponse, error) {
+	return &inventorypb.ReturnStockResponse{}, nil
+}
 
 type safePayment struct {
 	auths atomic.Int64

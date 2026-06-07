@@ -9,6 +9,7 @@ service InventoryService {
   rpc Hold(HoldRequest) returns (HoldResponse);
   rpc Commit(CommitRequest) returns (CommitResponse);
   rpc Release(ReleaseRequest) returns (ReleaseResponse);
+  rpc ReturnStock(ReturnStockRequest) returns (ReturnStockResponse);
 }
 
 message SetStockRequest {
@@ -42,3 +43,12 @@ message ReleaseRequest {
 }
 
 message ReleaseResponse {}
+
+message ReturnStockRequest {
+  string hotel_id = 1;
+  string room_type = 2;
+  string date = 3;
+  int32 quantity = 4;
+}
+
+message ReturnStockResponse {}

@@ -34,12 +34,15 @@ In `services/cancellation/`:
 
 ### 3. Unit tests (pre-existing)
 
-The test file `services/cancellation/internal/server/server_test.go` is pre-written and audited. **Do not modify or delete it.** Inspect it to learn the contract your handlers must satisfy — specifically the constructor name (`server.NewServer()`), method signatures, and the gRPC error codes asserted for each negative scenario.
+All test files matching `services/cancellation/internal/server/*_test.go` are pre-written and audited. **Do not modify, delete, or add to them.** There may be multiple — one per version increment (e.g. `server_test.go` for v1, `server_v2_test.go` for chaos features). Inspect every `*_test.go` file in that directory to learn the full contract your handlers must satisfy: constructor name (`server.NewServer()`), method signatures, gRPC error codes for each negative scenario, and any version-specific behavior (failure injection, latency, etc.). Your implementation must make every test pass.
 
 ### 4. Build & deploy
 
-- `Makefile` with targets: `build` (`go generate ./... && go build ./...`), `test` (`go test ./...`), `image` (`docker build -t agentbench/cancellation:dev .`).
+- `Makefile` with targets: `build` (`go generate ./... && go build ./...`), `test` (`go test ./...`), `image`.
+  - If `spec.dependent_interface` is empty: `image` target is `docker build -t agentbench/cancellation:dev .` (build context = service dir).
+  - If `spec.dependent_interface` is non-empty: `image` target is `docker build -t agentbench/cancellation:dev -f Dockerfile ../..` (build context = repo root, needed so the Dockerfile can COPY sibling services).
 - `Dockerfile` — multi-stage; final image `gcr.io/distroless/static-debian12`; exposes `50051` and `8080`.
+  - For cross-service builds, **do NOT `COPY go.work go.work`** from the repo root — that file may reference services your container doesn't include, breaking the build whenever a new service is added. Instead, COPY only this service and each entry in `spec.dependent_interface`, then generate a minimal `go.work` inline, e.g. `RUN printf 'go 1.25.4\n\nuse (\n\t./services/cancellation\n\t./services/<dep>\n)\n' > /src/go.work`.
 - Update `go.mod` via `go mod tidy`.
 
 ### 5. Cross-service imports (only if `spec.dependent_interface` is non-empty)
@@ -53,7 +56,7 @@ The test file `services/cancellation/internal/server/server_test.go` is pre-writ
 
 - **Do NOT add the upstream as a `require` in your `go.mod`**, and do NOT add a `replace` directive. The repo's `go.work` (already in place) puts all services in a Go workspace and resolves cross-module imports locally. A `require agentbench/services/<dep> v0.0.0` line triggers Go's module-path validator and fails the whole workspace with `malformed module path "agentbench/services/<dep>": missing dot in first path element`. The `require` block in your `go.mod` should only contain third-party modules (e.g. `google.golang.org/grpc`).
 
-If `go mod tidy` re-adds a `require agentbench/services/<dep>` line, delete it. The pre-authored test file in `internal/server/server_test.go` shows exactly which upstream RPCs your handlers must call and with what arguments — its mocks define the interface your handlers receive via `NewServer(...)`.
+If `go mod tidy` re-adds a `require agentbench/services/<dep>` line, delete it. The pre-authored test files in `internal/server/*_test.go` show exactly which upstream RPCs your handlers must call and with what arguments — their mocks define the interface your handlers receive via `NewServer(...)`.
 
 ## Constraints
 
@@ -64,59 +67,3 @@ If `go mod tidy` re-adds a `require agentbench/services/<dep>` line, delete it. 
 ## Done
 
 `make build` and `make test` succeed; the docker image builds and the running container answers `/healthz`. The framework's checkers pass.
-
-
-## Previous attempt failed
-
-```
-
-#5 [internal] load metadata for docker.io/library/golang:1.25
-#5 DONE 1.0s
-
-#6 [internal] load .dockerignore
-#6 transferring context: 2B done
-#6 DONE 0.0s
-
-#7 [stage-1 1/2] FROM gcr.io/distroless/static-debian12:latest@sha256:9c346e4be81b5ca7ff31a0d89eaeade58b0f95cfd3baed1f36083ddb47ca3160
-#7 CACHED
-
-#8 [build 1/7] FROM docker.io/library/golang:1.25@sha256:c138bff780910acf4254ab3a6f7ff0f64bbd841f27bd82bfa986fe122c109538
-#8 resolve docker.io/library/golang:1.25@sha256:c138bff780910acf4254ab3a6f7ff0f64bbd841f27bd82bfa986fe122c109538 done
-#8 DONE 0.0s
-
-#9 [build 2/7] WORKDIR /src
-#9 CACHED
-
-#10 [internal] load build context
-#10 transferring context: 2B done
-#10 DONE 0.0s
-
-#11 [build 5/7] COPY services/cancellation /src/services/cancellation
-#11 ERROR: failed to calculate checksum of ref 9dc568b2-6ea3-4a2a-a586-60251a4358f4::xpy1ayvayw4v8c213cmh5uasj: "/services/cancellation": not found
-
-#12 [build 3/7] COPY services/booking /src/services/booking
-#12 ERROR: failed to calculate checksum of ref 9dc568b2-6ea3-4a2a-a586-60251a4358f4::xpy1ayvayw4v8c213cmh5uasj: "/services/booking": not found
-
-#13 [build 4/7] COPY services/payment /src/services/payment
-#13 ERROR: failed to calculate checksum of ref 9dc568b2-6ea3-4a2a-a586-60251a4358f4::xpy1ayvayw4v8c213cmh5uasj: "/services/payment": not found
-------
- > [build 3/7] COPY services/booking /src/services/booking:
-------
-------
- > [build 4/7] COPY services/payment /src/services/payment:
-------
-------
- > [build 5/7] COPY services/cancellation /src/services/cancellation:
-------
-Dockerfile:6
---------------------
-   4 |     COPY services/booking /src/services/booking
-   5 |     COPY services/payment /src/services/payment
-   6 | >>> COPY services/cancellation /src/services/cancellation
-   7 |     WORKDIR /src/services/cancellation
-   8 |     RUN go mod tidy && CGO_ENABLED=0 GOOS=linux go build -o /out/cancellation ./cmd/cancellation
---------------------
-ERROR: failed to build: failed to solve: failed to compute cache key: failed to calculate checksum of ref 9dc568b2-6ea3-4a2a-a586-60251a4358f4::xpy1ayvayw4v8c213cmh5uasj: "/services/cancellation": not found
-make: *** [Makefile:11: image] Error 1
-
-```

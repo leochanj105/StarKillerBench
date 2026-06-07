@@ -9,3 +9,11 @@ $ /home/leochanj/Desktop/agentbench/framework/checkers/file_organization_matches
 $ python3 framework/scripts/scaffold_from_spec services/inventory/SPEC.yaml
 
 $ /home/leochanj/Desktop/agentbench/framework/checkers/file_organization_matches_spec services/inventory/SPEC.yaml
+
+$ python3 framework/scripts/scaffold_from_spec services/inventory/SPEC.yaml
+
+$ /home/leochanj/Desktop/agentbench/framework/checkers/file_organization_matches_spec services/inventory/SPEC.yaml
+
+$ python3 framework/scripts/scaffold_from_spec services/inventory/SPEC.yaml
+
+$ /home/leochanj/Desktop/agentbench/framework/checkers/file_organization_matches_spec services/inventory/SPEC.yaml
