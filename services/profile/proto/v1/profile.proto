@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package profile.v1;
+
+option go_package = "agentbench/services/profile/api/v1;profilev1";
+
+// ProfileService serves hotel metadata (name, address, description, amenities,
+// room types). v1 is in-memory: profiles are seeded via UpsertProfile and read
+// via GetProfile. State resets on restart.
+service ProfileService {
+  // Seeds or updates one hotel's profile. Overwrites any prior profile for the
+  // same hotel_id.
+  rpc UpsertProfile(UpsertProfileRequest) returns (UpsertProfileResponse);
+
+  // Returns the full profile for hotel_id.
+  rpc GetProfile(GetProfileRequest) returns (GetProfileResponse);
+}
+
+message UpsertProfileRequest {
+  string hotel_id = 1;
+  string name = 2;
+  string address = 3;
+  string description = 4;
+  repeated string amenities = 5;
+  repeated string room_types = 6;
+}
+
+message UpsertProfileResponse {}
+
+message GetProfileRequest {
+  string hotel_id = 1;
+}
+
+message GetProfileResponse {
+  string hotel_id = 1;
+  string name = 2;
+  string address = 3;
+  string description = 4;
+  repeated string amenities = 5;
+  repeated string room_types = 6;
+}

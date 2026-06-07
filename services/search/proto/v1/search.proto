@@ -1,0 +1,33 @@
+syntax = "proto3";
+
+package search.v1;
+
+option go_package = "agentbench/services/search/api/v1;searchv1";
+
+// SearchService is the read-path aggregator: it fans out to geo, profile, and
+// pricing and returns a ranked list of hotels with their cheapest priced room.
+service SearchService {
+  rpc Search(SearchRequest) returns (SearchResponse);
+}
+
+message SearchRequest {
+  double lat = 1;
+  double lng = 2;
+  double radius_km = 3;
+  string check_in = 4;
+  string check_out = 5;
+  int32 guests = 6;
+}
+
+message SearchResponse {
+  repeated SearchResult results = 1;
+}
+
+message SearchResult {
+  string hotel_id = 1;
+  string name = 2;
+  string address = 3;
+  int64 nightly_rate = 4;
+  int64 total = 5;
+  string currency = 6;
+}

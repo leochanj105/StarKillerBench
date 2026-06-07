@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+package pricing.v1;
+
+option go_package = "agentbench/services/pricing/api/v1;pricingv1";
+
+// PricingService computes a stay quote for a (hotel, room_type, date range).
+service PricingService {
+  // Seeds or updates the nightly rate for one (hotel_id, room_type).
+  rpc SetRatePlan(SetRatePlanRequest) returns (SetRatePlanResponse);
+
+  // Returns a priced quote for the stay using the v1 formula.
+  rpc Quote(QuoteRequest) returns (QuoteResponse);
+}
+
+message SetRatePlanRequest {
+  string hotel_id = 1;
+  string room_type = 2;
+  int64 nightly_rate = 3;
+  string currency = 4;
+}
+
+message SetRatePlanResponse {}
+
+message QuoteRequest {
+  string hotel_id = 1;
+  string room_type = 2;
+  string check_in = 3;
+  string check_out = 4;
+  int32 guests = 5;
+}
+
+message QuoteResponse {
+  int64 nightly_rate = 1;
+  int32 nights = 2;
+  int64 subtotal = 3;
+  int64 taxes = 4;
+  int64 fees = 5;
+  int64 total = 6;
+  string currency = 7;
+}

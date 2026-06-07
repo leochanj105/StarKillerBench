@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package geo.v1;
+
+option go_package = "agentbench/services/geo/api/v1;geov1";
+
+// GeoService answers spatial "which hotels are near here" queries.
+service GeoService {
+  // UpsertHotel seeds or updates one hotel's coordinates.
+  rpc UpsertHotel(UpsertHotelRequest) returns (UpsertHotelResponse);
+
+  // Nearby returns the ids of all seeded hotels within radius_km.
+  rpc Nearby(NearbyRequest) returns (NearbyResponse);
+}
+
+message UpsertHotelRequest {
+  string hotel_id = 1;
+  double lat = 2;
+  double lng = 3;
+}
+
+message UpsertHotelResponse {}
+
+message NearbyRequest {
+  double lat = 1;
+  double lng = 2;
+  double radius_km = 3;
+}
+
+message NearbyResponse {
+  repeated string hotel_ids = 1;
+}

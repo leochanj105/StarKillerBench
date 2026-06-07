@@ -1,0 +1,81 @@
+summary: |
+  profile serves hotel metadata (name, address, description, amenities, room
+  types) for hotel-detail pages and the search fan-out. v1 is in-memory:
+  profiles are seeded via UpsertProfile and read via GetProfile. State resets
+  on restart.
+
+  The realistic version is read-heavy with a two-tier cache (memcached →
+  MongoDB) and a batch read (BatchGetProfiles) for the search fan-in, plus a
+  rating summary fed by the review aggregator. Caching, batch, and ratings
+  are deferred to later iterations. UpsertProfile is the v1 seed path (admin
+  drives it in the full system).
+
+file_organization:
+  service_dir: services/profile
+  go_module: agentbench/services/profile
+  directories:
+    - services/profile/cmd/profile
+    - services/profile/internal/server
+    - services/profile/api/v1
+    - services/profile/proto/v1
+
+interface:
+  protocol: grpc
+  service: ProfileService
+  package: profile.v1
+  rpcs:
+    - name: UpsertProfile
+      request:
+        hotel_id: string
+        name: string
+        address: string
+        description: string
+        amenities: repeated string
+        room_types: repeated string
+      response: empty
+      description: |
+        Seeds or updates one hotel's profile. Overwrites any prior profile
+        for the same hotel_id.
+
+    - name: GetProfile
+      request:
+        hotel_id: string
+      response:
+        hotel_id: string
+        name: string
+        address: string
+        description: string
+        amenities: repeated string
+        room_types: repeated string
+      description: |
+        Returns the full profile for hotel_id.
+
+error_semantics:
+  - rpc: UpsertProfile
+    condition: hotel_id is empty
+    code: InvalidArgument
+  - rpc: UpsertProfile
+    condition: name is empty
+    code: InvalidArgument
+
+  - rpc: GetProfile
+    condition: no profile exists for hotel_id
+    code: NotFound
+
+state:
+  kind: in_memory
+  lifetime: per_process
+  stores:
+    profiles:
+      kind: map
+      key:
+        name: hotel_id
+        type: string
+      value:
+        name: string
+        address: string
+        description: string
+        amenities: repeated string
+        room_types: repeated string
+
+dependent_interface: []

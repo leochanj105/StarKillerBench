@@ -1,0 +1,22 @@
+service: search
+
+vars:
+  SERVICE_NAME: search
+
+# Path-scoped permissions. Framework-managed files (steps.yaml, SPEC.yaml,
+# .runner/**) are auto-denied by the runner.
+scope:
+  - services/search/**
+
+steps:
+  - id: scaffold_directories
+    do: python3 framework/scripts/scaffold_from_spec services/search/SPEC.yaml
+    checks:
+      - file_organization_matches_spec services/search/SPEC.yaml
+
+  - id: implement_service
+    context:
+      - services/search/SPEC.yaml
+    checks:
+      - go_tests_pass services/search
+      - docker_runs services/search

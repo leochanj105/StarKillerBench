@@ -3,7 +3,11 @@ go 1.25.4
 use (
 	./services/booking
 	./services/cancellation
+	./services/geo
 	./services/inventory
 	./services/payment
+	./services/pricing
+	./services/profile
+	./services/search
 	./tests/integration
 )

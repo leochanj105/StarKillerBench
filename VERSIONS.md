@@ -151,3 +151,53 @@ Deferred. (NATS is an orchestrator concern; booking is the natural home.)
 
 ### v3 — _planned: cancellation policy (fees / free-cancel window)_
 Deferred (date-based fee logic adds nondeterminism to tests).
+
+---
+
+## geo
+
+### v1 — shakedown
+- 2 RPCs: `UpsertHotel` (seed coords), `Nearby` (haversine scan within
+  `radius_km`)
+- In-memory `hotels` map; linear scan
+- Deferred to v2: R-tree / geohash index rebuilt from MongoDB at startup
+- Unit tests: `services/geo/internal/server/server_test.go`
+
+---
+
+## profile
+
+### v1 — shakedown
+- 2 RPCs: `UpsertProfile` (seed), `GetProfile`
+- In-memory `profiles` map (name, address, description, amenities,
+  room_types)
+- Deferred to v2: `BatchGetProfiles`, memcached→MongoDB two-tier cache,
+  rating summary from the review aggregator
+- Unit tests: `services/profile/internal/server/server_test.go`
+
+---
+
+## pricing
+
+### v1 — shakedown
+- 2 RPCs: `SetRatePlan` (seed nightly rate), `Quote`
+- Deterministic v1 formula: `subtotal = rate×nights`, `taxes =
+  subtotal/10`, `fees = 1500` flat, `total = sum`; money in minor units
+- In-memory `rate_plans` map keyed by `<hotel_id>|<room_type>`
+- Deferred to v2: `BatchQuote`, length-of-stay / day-of-week / demand
+  factors, promo codes, Redis cache
+- Unit tests: `services/pricing/internal/server/server_test.go`
+
+---
+
+## search
+
+### v1 — shakedown
+- 1 RPC: `Search(lat, lng, radius_km, check_in, check_out, guests)` → ranked
+  `SearchResult` list (hotel_id, name, address, nightly_rate, total, currency)
+- Read-path aggregator: geo.Nearby → profile.GetProfile → pricing.Quote
+  (cheapest priceable room per hotel) → rank by total ascending
+- Stateless; `dependent_interface: [geo, profile, pricing]`
+- Deferred to v2: inventory availability filtering (needs inventory
+  CheckAvailability), sponsored ads, result cache, multi-factor ranking
+- Unit tests: `services/search/internal/server/server_test.go`
