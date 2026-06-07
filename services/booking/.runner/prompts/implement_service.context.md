@@ -121,8 +121,16 @@ That's the single auditable declaration of cross-service file access — read th
 summary: |
   booking orchestrates the hotel-reservation saga: hold inventory, authorize
   + capture payment, commit inventory, persist the booking. On any failure
-  along the chain it runs compensating actions. State (the persisted
-  booking records) is in process memory.
+  along the chain it runs compensating actions.
+
+  v2 moves the persisted booking records and idempotency index from process
+  memory to Postgres. Bookings survive restarts, and idempotency becomes
+  durable and race-safe: two concurrent CreateBooking calls with the same
+  idempotency_key never both run the saga. The RPC surface is unchanged.
+
+  The v1 in-memory implementation is retained as `memStore` behind a
+  `Store` interface so v1 tests stay frozen and local dev runs without
+  Postgres.
 
 file_organization:
   service_dir: services/booking
@@ -130,6 +138,8 @@ file_organization:
   directories:
     - services/booking/cmd/booking
     - services/booking/internal/server
+    - services/booking/internal/store
+    - services/booking/migrations
     - services/booking/api/v1
     - services/booking/proto/v1
 
@@ -192,30 +202,51 @@ error_semantics:
     condition: unknown booking_id
     code: NotFound
 
+  # ── v2: idempotency contract (locked down by server_v2_test.go) ──────
+  # When N concurrent CreateBooking calls carry the same idempotency_key,
+  # the saga (inventory.Hold → payment → inventory.Commit) MUST run at
+  # most once, and every caller MUST receive the same booking_id. The
+  # Postgres backend enforces this with a UNIQUE constraint on the
+  # booking record's idempotency_key: the winning insert persists the
+  # booking; a losing insert conflicts on the key and the handler returns
+  # the already-stored booking_id without re-running the saga.
+
 state:
-  kind: in_memory
-  lifetime: per_process
+  # v2 default backend is Postgres; the v1 in-memory backend is kept as an
+  # alternate implementation behind the same `Store` interface so the v1
+  # test file (server_test.go) continues to pin its behavior.
+  backends:
+    - name: memStore
+      kind: in_memory
+      lifetime: per_process
+      used_by: ["v1 unit tests (server_test.go)", "local dev when PG_DSN is unset"]
+    - name: pgStore
+      kind: postgres
+      version: ">= 14"
+      lifetime: durable
+      used_by: ["v2 unit tests (server_v2_test.go)", "production / integration stack"]
+      connection_env: PG_DSN
+      schema_source: services/booking/migrations/0001_init.sql
+      schema_applied_by: external   # not by the service at startup; loaded
+                                    # externally (compose init script in
+                                    # tests, a migration tool in production)
+
+  # Logical schema: a single bookings store. idempotency_key is a unique
+  # field on the booking record (not a separate store) — its uniqueness is
+  # what dedups retried/concurrent CreateBooking calls.
   stores:
     bookings:
-      kind: map
       key:
-        name: booking_id
-        type: string
+        - booking_id: text
       value:
-        user_id: string
-        hotel_id: string
-        room_type: string
-        date: string
+        idempotency_key: text   # unique; dedups retries of CreateBooking
+        user_id: text
+        hotel_id: text
+        room_type: text
+        date: text
         amount: int64
-        currency: string
-        auth_id: string
-        status: string       # always "confirmed" in the persisted set
-    idempotency:
-      kind: map
-      key:
-        name: idempotency_key
-        type: string
-      value:
-        booking_id: string
+        currency: text
+        auth_id: text
+        status: text            # always "confirmed" in the persisted set
 
 dependent_interface: [inventory, payment]

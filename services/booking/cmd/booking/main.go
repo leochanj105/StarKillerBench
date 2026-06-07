@@ -15,6 +15,7 @@ import (
 
 	bookingpb "agentbench/services/booking/api/v1"
 	"agentbench/services/booking/internal/server"
+	"agentbench/services/booking/internal/store"
 	inventorypb "agentbench/services/inventory/api/v1"
 	paymentpb "agentbench/services/payment/api/v1"
 
@@ -38,9 +39,26 @@ func main() {
 	}
 	defer invConn.Close()
 
-	srv := server.NewServer(
+	// Backend selection: Postgres when PG_DSN is set, otherwise in-memory
+	// (local dev). The schema is applied externally, not at startup.
+	var st store.Store
+	if dsn := os.Getenv("PG_DSN"); dsn != "" {
+		pg, err := store.NewPGStore(context.Background(), dsn)
+		if err != nil {
+			log.Fatalf("connect postgres: %v", err)
+		}
+		defer pg.Close()
+		st = pg
+		log.Printf("using postgres store")
+	} else {
+		st = store.NewMemStore()
+		log.Printf("PG_DSN unset; using in-memory store")
+	}
+
+	srv := server.NewServerWithStore(
 		paymentpb.NewPaymentServiceClient(payConn),
 		inventorypb.NewInventoryServiceClient(invConn),
+		st,
 	)
 
 	grpcServer := grpc.NewServer()

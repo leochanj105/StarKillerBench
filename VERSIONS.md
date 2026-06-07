@@ -86,8 +86,30 @@ Deferred.
 - In-memory `bookings` and `idempotency` maps
 - Unit tests: `services/booking/internal/server/server_test.go`
 
-### v2 — _planned: Postgres-backed booking records, NATS-based saga steps_
-Deferred.
+### v2 — Postgres-backed booking records, race-safe idempotency
+- Moves booking records + the idempotency index from process memory to
+  Postgres (`PGStore`).
+- Adds a `Store` interface; the v1 in-memory backend is retained as
+  `MemStore` so the v1 test file stays frozen and dev runs without
+  Postgres.
+- New constructor `NewServerWithStore(payment, inventory, store)`;
+  `NewServer(payment, inventory)` defaults to `MemStore` (v1 preserved).
+- Single `bookings` table; `idempotency_key` is a UNIQUE column on it
+  (no separate idempotency table). Schema in
+  `services/booking/migrations/0001_init.sql`, applied externally.
+- Idempotency is race-safe two ways: an in-process per-key lock ensures
+  the saga runs at most once under concurrency, and the DB UNIQUE
+  constraint (`INSERT … ON CONFLICT DO NOTHING`) dedups across processes.
+- Dedicated `postgres-booking` container in the integration compose
+  (own database, host port 15433).
+- New `PG_DSN` env var; Postgres when set, in-memory otherwise.
+- Unit tests: `services/booking/internal/server/server_v2_test.go`
+  (durability, idempotent replay, concurrent-same-key runs saga once).
+- Integration tests: no changes (RPC contract unchanged; the 8 saga
+  tests run end-to-end against the Postgres-backed booking image).
+
+### v3 — _planned: NATS-based async saga events_
+Deferred. (NATS is an orchestrator concern; booking is the natural home.)
 
 ---
 

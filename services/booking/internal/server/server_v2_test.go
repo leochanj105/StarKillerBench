@@ -27,6 +27,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	bookingpb "agentbench/services/booking/api/v1"
 	"agentbench/services/booking/internal/server"
@@ -36,6 +37,14 @@ import (
 
 	"google.golang.org/grpc"
 )
+
+// runNonce makes idempotency keys unique per test-process run. The Postgres
+// tables persist across runs (the integration stack truncates by dropping
+// the container, but a developer re-running `go test` against a long-lived
+// DB would otherwise reuse keys). A fresh nonce per run guarantees each run
+// exercises new keys — essential for the concurrency test, whose Hold-count
+// assertion only holds for a key the saga has never seen.
+var runNonce = itoa(time.Now().UnixNano())
 
 // ─── Concurrency-safe upstream mocks (v2-local) ──────────────────────────────
 //
@@ -144,7 +153,7 @@ func TestV2_DurableAcrossRestart(t *testing.T) {
 	defer done()
 	ctx := context.Background()
 
-	id := createOK(t, s1, "u_durable", "k_durable_"+t.Name())
+	id := createOK(t, s1, "u_durable", "k_durable_"+runNonce)
 
 	got, err := s2.GetBooking(ctx, &bookingpb.GetBookingRequest{BookingId: id})
 	if err != nil {
@@ -167,7 +176,7 @@ func TestV2_IdempotentAcrossRestart(t *testing.T) {
 	defer done()
 	ctx := context.Background()
 
-	key := "k_idem_" + t.Name()
+	key := "k_idem_" + runNonce
 	first := createOK(t, s1, "u_idem", key)
 
 	r, err := s2.CreateBooking(ctx, &bookingpb.CreateBookingRequest{
@@ -208,7 +217,7 @@ func TestV2_ConcurrentSameKey_SagaRunsOnce(t *testing.T) {
 	s := server.NewServerWithStore(pay, inv, st)
 
 	const racers = 10
-	key := "k_race_" + t.Name()
+	key := "k_race_" + runNonce
 	req := &bookingpb.CreateBookingRequest{
 		UserId: "u_race", HotelId: "H_v2", RoomType: "STD", Date: "2026-07-01",
 		Amount: 5000, Currency: "USD", PaymentToken: "tok", IdempotencyKey: key,

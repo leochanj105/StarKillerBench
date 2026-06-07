@@ -7,6 +7,7 @@ import (
 	"sync"
 
 	bookingpb "agentbench/services/booking/api/v1"
+	"agentbench/services/booking/internal/store"
 	inventorypb "agentbench/services/inventory/api/v1"
 	paymentpb "agentbench/services/payment/api/v1"
 
@@ -14,35 +15,50 @@ import (
 	"google.golang.org/grpc/status"
 )
 
-type booking struct {
-	userID   string
-	hotelID  string
-	roomType string
-	date     string
-	amount   int64
-	currency string
-	authID   string
-	status   string
-}
-
+// Server implements BookingService. It orchestrates the booking saga across
+// the payment and inventory services and persists confirmed bookings through
+// a pluggable Store (in-memory or Postgres).
 type Server struct {
 	bookingpb.UnimplementedBookingServiceServer
 
 	payment   paymentpb.PaymentServiceClient
 	inventory inventorypb.InventoryServiceClient
+	store     store.Store
 
-	mu          sync.Mutex
-	bookings    map[string]*booking
-	idempotency map[string]string
+	// Per-idempotency-key serialization. Two concurrent CreateBooking calls
+	// with the same key must not both run the saga; the keyed lock makes the
+	// loser wait, observe the persisted record, and return it. (The store's
+	// UNIQUE constraint backs this up across processes.)
+	mu       sync.Mutex
+	keyLocks map[string]*sync.Mutex
 }
 
+// NewServer builds a Server backed by an in-memory store. Used by v1 unit
+// tests and local dev when PG_DSN is unset.
 func NewServer(payment paymentpb.PaymentServiceClient, inventory inventorypb.InventoryServiceClient) *Server {
+	return NewServerWithStore(payment, inventory, store.NewMemStore())
+}
+
+// NewServerWithStore builds a Server backed by the supplied store.
+func NewServerWithStore(payment paymentpb.PaymentServiceClient, inventory inventorypb.InventoryServiceClient, st store.Store) *Server {
 	return &Server{
-		payment:     payment,
-		inventory:   inventory,
-		bookings:    make(map[string]*booking),
-		idempotency: make(map[string]string),
+		payment:   payment,
+		inventory: inventory,
+		store:     st,
+		keyLocks:  make(map[string]*sync.Mutex),
 	}
+}
+
+// lockFor returns the mutex guarding a single idempotency key.
+func (s *Server) lockFor(key string) *sync.Mutex {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	l, ok := s.keyLocks[key]
+	if !ok {
+		l = &sync.Mutex{}
+		s.keyLocks[key] = l
+	}
+	return l
 }
 
 func newID() string {
@@ -63,13 +79,19 @@ func (s *Server) CreateBooking(ctx context.Context, req *bookingpb.CreateBooking
 		return nil, status.Error(codes.InvalidArgument, "missing required field or non-positive amount")
 	}
 
-	s.mu.Lock()
-	if id, ok := s.idempotency[req.GetIdempotencyKey()]; ok {
-		s.mu.Unlock()
+	lock := s.lockFor(req.GetIdempotencyKey())
+	lock.Lock()
+	defer lock.Unlock()
+
+	// Idempotency: a key seen by a prior successful CreateBooking returns the
+	// stored booking_id without re-running the saga.
+	if id, ok, err := s.store.ByIdempotencyKey(ctx, req.GetIdempotencyKey()); err != nil {
+		return nil, status.Errorf(codes.Internal, "idempotency lookup failed: %v", err)
+	} else if ok {
 		return &bookingpb.CreateBookingResponse{BookingId: id}, nil
 	}
-	s.mu.Unlock()
 
+	// ── Saga: Hold → Authorize → Capture → Commit, with compensations ──
 	holdResp, err := s.inventory.Hold(ctx, &inventorypb.HoldRequest{
 		HotelId:  req.GetHotelId(),
 		RoomType: req.GetRoomType(),
@@ -103,51 +125,51 @@ func (s *Server) CreateBooking(ctx context.Context, req *bookingpb.CreateBooking
 		return nil, status.Errorf(codes.FailedPrecondition, "inventory commit failed: %v", err)
 	}
 
-	bookingID := newID()
-	s.mu.Lock()
-	s.bookings[bookingID] = &booking{
-		userID:   req.GetUserId(),
-		hotelID:  req.GetHotelId(),
-		roomType: req.GetRoomType(),
-		date:     req.GetDate(),
-		amount:   req.GetAmount(),
-		currency: req.GetCurrency(),
-		authID:   authID,
-		status:   "confirmed",
+	// Persist. On a cross-process key conflict the store returns the winner's
+	// booking_id; we hand that back rather than the one we minted.
+	storedID, _, err := s.store.Create(ctx, store.Booking{
+		BookingID:      newID(),
+		IdempotencyKey: req.GetIdempotencyKey(),
+		UserID:         req.GetUserId(),
+		HotelID:        req.GetHotelId(),
+		RoomType:       req.GetRoomType(),
+		Date:           req.GetDate(),
+		Amount:         req.GetAmount(),
+		Currency:       req.GetCurrency(),
+		AuthID:         authID,
+		Status:         "confirmed",
+	})
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "persist booking failed: %v", err)
 	}
-	s.idempotency[req.GetIdempotencyKey()] = bookingID
-	s.mu.Unlock()
 
-	return &bookingpb.CreateBookingResponse{BookingId: bookingID}, nil
+	return &bookingpb.CreateBookingResponse{BookingId: storedID}, nil
 }
 
 func (s *Server) GetBooking(ctx context.Context, req *bookingpb.GetBookingRequest) (*bookingpb.GetBookingResponse, error) {
-	s.mu.Lock()
-	b, ok := s.bookings[req.GetBookingId()]
-	s.mu.Unlock()
+	b, ok, err := s.store.Get(ctx, req.GetBookingId())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "get booking failed: %v", err)
+	}
 	if !ok {
 		return nil, status.Errorf(codes.NotFound, "booking %q not found", req.GetBookingId())
 	}
 	return &bookingpb.GetBookingResponse{
-		UserId:   b.userID,
-		HotelId:  b.hotelID,
-		RoomType: b.roomType,
-		Date:     b.date,
-		Amount:   b.amount,
-		Currency: b.currency,
-		AuthId:   b.authID,
-		Status:   b.status,
+		UserId:   b.UserID,
+		HotelId:  b.HotelID,
+		RoomType: b.RoomType,
+		Date:     b.Date,
+		Amount:   b.Amount,
+		Currency: b.Currency,
+		AuthId:   b.AuthID,
+		Status:   b.Status,
 	}, nil
 }
 
 func (s *Server) ListBookings(ctx context.Context, req *bookingpb.ListBookingsRequest) (*bookingpb.ListBookingsResponse, error) {
-	ids := []string{}
-	s.mu.Lock()
-	for id, b := range s.bookings {
-		if b.userID == req.GetUserId() {
-			ids = append(ids, id)
-		}
+	ids, err := s.store.ListByUser(ctx, req.GetUserId())
+	if err != nil {
+		return nil, status.Errorf(codes.Internal, "list bookings failed: %v", err)
 	}
-	s.mu.Unlock()
 	return &bookingpb.ListBookingsResponse{BookingIds: ids}, nil
 }
