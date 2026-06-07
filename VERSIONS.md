@@ -72,7 +72,19 @@ tests. Previous versions' test files are not modified.
 - Integration tests: no changes (RPC contract unchanged; existing saga
   tests verify behavior end-to-end against the Postgres-backed image).
 
-### v3 — _planned: Redis hot-read cache_
+### v3 — ReturnStock (post-commit undo for cancellation)
+- New RPC `ReturnStock(hotel_id, room_type, date, quantity)` decrements
+  `sold` for the key, returning units to availability. This is the
+  post-commit undo a cancelled booking needs — `Release` only undoes a
+  still-held reservation, not a committed sale.
+- No schema change (`sold` already exists); no migration change.
+- Errors: `InvalidArgument` (quantity ≤ 0), `NotFound` (no stock key),
+  `FailedPrecondition` (quantity > sold).
+- Unit tests: `services/inventory/internal/server/server_v3_test.go`
+  (run against the in-memory backend; no Postgres needed).
+- Enables cancellation v2.
+
+### v4 — _planned: Redis hot-read cache_
 Deferred.
 
 ---
@@ -122,5 +134,20 @@ Deferred. (NATS is an orchestrator concern; booking is the natural home.)
   version; documented in SPEC summary)
 - Unit tests: `services/cancellation/internal/server/server_test.go`
 
-### v2 — _planned: inventory.Release + cancellation policy_
-Deferred.
+### v2 — return the room to inventory on cancel
+- Closes the v1 gap: v1 refunded money but left the room sold. v2 also
+  calls `inventory.ReturnStock` to put the unit back.
+- `Cancel` flow: `booking.GetBooking` → `payment.Refund` →
+  `inventory.ReturnStock(hotel, room, date, 1)`, in that fixed order.
+- No compensation: a second-step failure leaves the first applied and is
+  surfaced as `FailedPrecondition` (acceptable for the mock bench; a
+  production system would use a saga). Still stateless.
+- New dependency: `dependent_interface` is now
+  `[booking, payment, inventory]`.
+- Depends on inventory v3's `ReturnStock`.
+- Unit tests: `services/cancellation/internal/server/server_v2_test.go`
+- Integration tests: `tests/integration/saga_v3_test.go` (book → cancel →
+  room bookable again).
+
+### v3 — _planned: cancellation policy (fees / free-cancel window)_
+Deferred (date-based fee logic adds nondeterminism to tests).

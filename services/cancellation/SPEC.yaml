@@ -1,8 +1,16 @@
 summary: |
-  cancellation reverses a confirmed booking by issuing a full refund.
-  It fetches the booking via booking.GetBooking to learn the auth_id and
-  amount, then calls payment.Refund. Inventory is NOT returned to
-  availability in this iteration. Stateless: every call is independent.
+  cancellation reverses a confirmed booking. It fetches the booking via
+  booking.GetBooking to learn the auth_id, amount, and the room
+  (hotel_id, room_type, date), then issues a full refund via
+  payment.Refund and returns the room to availability via
+  inventory.ReturnStock. Stateless: every call is independent.
+
+  v2 adds the inventory return — v1 refunded money but left the room
+  sold. The booking being cancelled is always fully committed (a booking
+  only exists if its saga ran to completion), so the unit sits in
+  inventory's `sold` bucket and is reversed with ReturnStock (the
+  post-commit undo), not Release (which only undoes a still-held
+  reservation).
 
 file_organization:
   service_dir: services/cancellation
@@ -23,8 +31,17 @@ interface:
         booking_id: string
       response: empty
       description: |
-        Cancels a booking with a full refund. Calls booking.GetBooking to
-        look up the auth_id and amount, then calls payment.Refund.
+        Cancels a confirmed booking. Calls booking.GetBooking to look up
+        the auth_id, amount, and room (hotel_id, room_type, date), then
+        runs two reversals in order: payment.Refund(auth_id, amount), then
+        inventory.ReturnStock(hotel_id, room_type, date, 1).
+
+        No compensation: the two reversals run in a fixed order and any
+        failure is surfaced to the caller as FailedPrecondition. A
+        failure of the second step leaves the first applied (e.g. money
+        refunded but room not yet returned). This is acceptable for the
+        mock bench; a production system would wrap the two steps in a
+        saga.
 
 error_semantics:
   - rpc: Cancel
@@ -36,9 +53,12 @@ error_semantics:
   - rpc: Cancel
     condition: payment.Refund returns any error
     code: FailedPrecondition
+  - rpc: Cancel
+    condition: inventory.ReturnStock returns any error
+    code: FailedPrecondition
 
 state:
   kind: stateless
   lifetime: per_process
 
-dependent_interface: [booking, payment]
+dependent_interface: [booking, payment, inventory]

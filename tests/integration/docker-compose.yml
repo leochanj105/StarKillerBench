@@ -89,7 +89,7 @@ services:
       context: ../..
       dockerfile: services/cancellation/Dockerfile
     container_name: cancellation
-    depends_on: [booking, payment]
+    depends_on: [booking, payment, inventory]
     ports:
       - "18104:50051"
       - "18804:8080"

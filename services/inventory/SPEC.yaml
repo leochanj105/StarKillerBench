@@ -66,6 +66,22 @@ interface:
       description: |
         Releases a held reservation. The held quantity returns to available.
 
+    - name: ReturnStock
+      request:
+        hotel_id: string
+        room_type: string
+        date: string
+        quantity: int32
+      response: empty
+      description: |
+        Returns previously-sold units to availability — the post-commit
+        undo used when a confirmed booking is cancelled. Decrements `sold`
+        for the (hotel_id, room_type, date) key by `quantity`, raising
+        available stock. Unlike Release (which only undoes a still-held
+        reservation), ReturnStock reverses a Commit. Identified by stock
+        key, not hold_id, since a cancelled booking no longer has an
+        active hold.
+
 error_semantics:
   - rpc: SetStock
     condition: quantity is negative
@@ -93,6 +109,17 @@ error_semantics:
     code: NotFound
   - rpc: Release
     condition: hold has already been committed or released
+    code: FailedPrecondition
+
+  # ── v3: ReturnStock (locked down by server_v3_test.go) ───────────────
+  - rpc: ReturnStock
+    condition: quantity is non-positive
+    code: InvalidArgument
+  - rpc: ReturnStock
+    condition: no stock record exists for (hotel_id, room_type, date)
+    code: NotFound
+  - rpc: ReturnStock
+    condition: quantity exceeds the currently sold count for the key
     code: FailedPrecondition
 
   # ── v2: concurrency contract (locked down by server_v2_test.go) ──────
