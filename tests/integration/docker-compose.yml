@@ -93,3 +93,38 @@ services:
     ports:
       - "18104:50051"
       - "18804:8080"
+
+  # ── Read path: geo + profile + pricing (leaves) feed the search aggregator ──
+  geo:
+    build:
+      context: ../../services/geo
+    container_name: geo
+    ports:
+      - "18105:50051"
+      - "18805:8080"
+
+  profile:
+    build:
+      context: ../../services/profile
+    container_name: profile
+    ports:
+      - "18106:50051"
+      - "18806:8080"
+
+  pricing:
+    build:
+      context: ../../services/pricing
+    container_name: pricing
+    ports:
+      - "18107:50051"
+      - "18807:8080"
+
+  search:
+    build:
+      context: ../..
+      dockerfile: services/search/Dockerfile
+    container_name: search
+    depends_on: [geo, profile, pricing]
+    ports:
+      - "18108:50051"
+      - "18808:8080"
