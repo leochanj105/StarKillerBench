@@ -34,14 +34,21 @@ for port in 18801 18802 18803 18804; do
     echo "    port $port ready"
 done
 
-# Store-backed unit tests that need a live database. PG_DSN points at the
-# compose Postgres (host-published on 15432). Without this, these tests
-# skip themselves — so running them here is the only place they actually
-# execute. Add a service's store-backed package below when it gains one.
-export PG_DSN="postgres://inv:inv@localhost:15432/inventory?sslmode=disable"
+# Store-backed unit tests that need a live database. Each service owns its
+# own Postgres (host-published on a distinct port); we point PG_DSN at the
+# right one per service. Without PG_DSN these tests skip themselves, so
+# running them here is the only place they actually execute. Add a
+# service's store-backed package below when it gains one.
 
 echo "==> store-backed unit tests (inventory v2, against compose Postgres)"
-( cd services/inventory && go test -v -run TestV2 ./internal/server/ )
+( cd services/inventory && \
+  PG_DSN="postgres://inv:inv@localhost:15432/inventory?sslmode=disable" \
+  go test -v -run TestV2 ./internal/server/ )
+
+echo "==> store-backed unit tests (booking v2, against compose Postgres)"
+( cd services/booking && \
+  PG_DSN="postgres://bk:bk@localhost:15433/booking?sslmode=disable" \
+  go test -v -run TestV2 ./internal/server/ )
 
 echo "==> cross-service integration tests"
 ( cd tests/integration && go test -v ./... )

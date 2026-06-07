@@ -46,12 +46,40 @@ services:
       - "18102:50051"
       - "18802:8080"
 
+  # Dedicated Postgres for booking v2 (each service owns its own database).
+  # Host port 15433 lets booking's v2 unit tests on the host point at this
+  # same DB via PG_DSN.
+  postgres-booking:
+    image: postgres:16-alpine
+    container_name: postgres-booking
+    environment:
+      POSTGRES_PASSWORD: bk
+      POSTGRES_USER: bk
+      POSTGRES_DB: booking
+    ports:
+      - "15433:5432"
+    volumes:
+      - ../../services/booking/migrations/0001_init.sql:/docker-entrypoint-initdb.d/0001_init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bk -d booking"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
   booking:
     build:
       context: ../..
       dockerfile: services/booking/Dockerfile
     container_name: booking
-    depends_on: [payment, inventory]
+    environment:
+      PG_DSN: postgres://bk:bk@postgres-booking:5432/booking?sslmode=disable
+    depends_on:
+      payment:
+        condition: service_started
+      inventory:
+        condition: service_started
+      postgres-booking:
+        condition: service_healthy
     ports:
       - "18103:50051"
       - "18803:8080"
