@@ -1,0 +1,4 @@
+service: auth
+steps:
+  scaffold_directories: passed
+  implement_service: passed

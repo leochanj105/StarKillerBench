@@ -1,0 +1,22 @@
+service: auth
+
+vars:
+  SERVICE_NAME: auth
+
+# Path-scoped permissions. Framework-managed files (steps.yaml, SPEC.yaml,
+# .runner/**) are auto-denied by the runner.
+scope:
+  - services/auth/**
+
+steps:
+  - id: scaffold_directories
+    do: python3 framework/scripts/scaffold_from_spec services/auth/SPEC.yaml
+    checks:
+      - file_organization_matches_spec services/auth/SPEC.yaml
+
+  - id: implement_service
+    context:
+      - services/auth/SPEC.yaml
+    checks:
+      - go_tests_pass services/auth
+      - docker_runs services/auth

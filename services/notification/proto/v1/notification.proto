@@ -1,0 +1,26 @@
+syntax = "proto3";
+
+package notification.v1;
+
+option go_package = "agentbench/services/notification/api/v1;notificationv1";
+
+// NotificationService turns booking lifecycle events into outbound messages.
+service NotificationService {
+  // Notify generates the outbound messages for one event and returns them.
+  rpc Notify(NotifyRequest) returns (NotifyResponse);
+}
+
+message NotifyRequest {
+  string event_type = 1;
+  string user_id = 2;
+  string booking_id = 3;
+}
+
+message NotifyResponse {
+  repeated Message messages = 1;
+}
+
+message Message {
+  string channel = 1; // v1 always "email"
+  string body = 2;    // references the booking_id
+}

@@ -1,0 +1,59 @@
+syntax = "proto3";
+
+package auth.v1;
+
+option go_package = "agentbench/services/auth/api/v1;authv1";
+
+// AuthService issues and verifies user credentials and tokens.
+service AuthService {
+  // Register creates a new user with the "guest" scope.
+  rpc Register(RegisterRequest) returns (RegisterResponse);
+  // Login verifies the password and issues an access + refresh token.
+  rpc Login(LoginRequest) returns (LoginResponse);
+  // VerifyToken validates an access token and returns its claims.
+  rpc VerifyToken(VerifyTokenRequest) returns (VerifyTokenResponse);
+  // Refresh issues a new access token for a valid refresh token.
+  rpc Refresh(RefreshRequest) returns (RefreshResponse);
+  // Logout revokes the session for the given refresh token.
+  rpc Logout(LogoutRequest) returns (LogoutResponse);
+}
+
+message RegisterRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message RegisterResponse {}
+
+message LoginRequest {
+  string email = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  string access_token = 1;
+  string refresh_token = 2;
+}
+
+message VerifyTokenRequest {
+  string access_token = 1;
+}
+
+message VerifyTokenResponse {
+  string user_id = 1;
+  string scope = 2;
+}
+
+message RefreshRequest {
+  string refresh_token = 1;
+}
+
+message RefreshResponse {
+  string access_token = 1;
+}
+
+message LogoutRequest {
+  string refresh_token = 1;
+}
+
+message LogoutResponse {}

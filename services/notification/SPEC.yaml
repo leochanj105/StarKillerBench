@@ -1,0 +1,61 @@
+summary: |
+  notification turns booking lifecycle events into outbound messages
+  (email/sms/push stubs). In the full system it is an async worker consuming
+  NATS subjects; v1 is a synchronous placeholder: a single Notify RPC takes
+  one event and returns the message(s) it would send. Stateless and
+  deterministic — no broker, no worker pool, no sink.
+
+  v1 message mapping (one message per event):
+    - "booking.confirmed" → [{channel: "email", body: "...confirmed..."}]
+    - "booking.cancelled" → [{channel: "email", body: "...cancelled..."}]
+  Each body references the booking_id.
+
+  Deferred to v2 (see VERSIONS.md): real async consumption from NATS
+  JetStream (durable consumers of booking.confirmed / booking.cancelled /
+  review.posted), a configurable worker pool, queue-depth metrics, the 1–3
+  messages-per-event fan-out, and the redelivery/retry failure mode. The v2
+  upgrade also requires booking to *emit* events (booking v3), so the two
+  land together as the event-layer milestone.
+
+file_organization:
+  service_dir: services/notification
+  go_module: agentbench/services/notification
+  directories:
+    - services/notification/cmd/notification
+    - services/notification/internal/server
+    - services/notification/api/v1
+    - services/notification/proto/v1
+
+interface:
+  protocol: grpc
+  service: NotificationService
+  package: notification.v1
+  rpcs:
+    - name: Notify
+      request:
+        event_type: string
+        user_id: string
+        booking_id: string
+      response:
+        messages: repeated Message
+      description: |
+        Generates the outbound messages for one event and returns them. The
+        response's `messages` is a repeated Message, where Message has
+        fields:
+          channel: string   # v1 always "email"
+          body:    string    # references the booking_id
+        event_type must be one of "booking.confirmed" or "booking.cancelled".
+
+error_semantics:
+  - rpc: Notify
+    condition: event_type, user_id, or booking_id is empty
+    code: InvalidArgument
+  - rpc: Notify
+    condition: event_type is not a recognized event ("booking.confirmed" or "booking.cancelled")
+    code: InvalidArgument
+
+state:
+  kind: stateless
+  lifetime: per_process
+
+dependent_interface: []

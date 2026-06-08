@@ -1,0 +1,142 @@
+summary: |
+  auth issues and verifies user credentials and tokens. It is on the hot path
+  for every authenticated request (frontend/admin call VerifyToken per
+  request), so it exists to exercise crypto-on-the-hot-path behavior.
+
+  v1 is in-memory and deterministic:
+    - Users are stored in a map keyed by email, with a salted password hash
+      (v1 uses SHA-256 over salt+password; the realistic version uses
+      Argon2id — deferred).
+    - Access tokens are stateless JWTs signed with HMAC-SHA256 over a secret
+      read from AUTH_JWT_SECRET (a dev default is used if unset). Claims:
+      subject = user_id, scope, issued-at, expiry. VerifyToken validates the
+      signature and expiry only — no store lookup.
+    - Refresh tokens are opaque random strings held server-side in a
+      sessions map; Refresh mints a new access token, Logout revokes the
+      session.
+  All v1 users are issued the "guest" scope.
+
+  Deferred to later iterations: Argon2id hashing, RS256 signing with a
+  published JWKS, Redis-backed sessions + revocation list, login rate
+  limiting, and distinct admin-scope issuance.
+
+file_organization:
+  service_dir: services/auth
+  go_module: agentbench/services/auth
+  directories:
+    - services/auth/cmd/auth
+    - services/auth/internal/server
+    - services/auth/api/v1
+    - services/auth/proto/v1
+
+interface:
+  protocol: grpc
+  service: AuthService
+  package: auth.v1
+  rpcs:
+    - name: Register
+      request:
+        email: string
+        password: string
+      response: empty
+      description: |
+        Creates a new user with the "guest" scope. Stores a salted password
+        hash, never the plaintext.
+
+    - name: Login
+      request:
+        email: string
+        password: string
+      response:
+        access_token: string
+        refresh_token: string
+      description: |
+        Verifies the password and issues a fresh access token (JWT) and a
+        new refresh token (opaque, server-side session).
+
+    - name: VerifyToken
+      request:
+        access_token: string
+      response:
+        user_id: string
+        scope: string
+      description: |
+        Validates the access token's signature and expiry and returns its
+        claims. Stateless — no session lookup.
+
+    - name: Refresh
+      request:
+        refresh_token: string
+      response:
+        access_token: string
+      description: |
+        Issues a new access token for the session identified by a valid,
+        non-revoked refresh token.
+
+    - name: Logout
+      request:
+        refresh_token: string
+      response: empty
+      description: |
+        Revokes the session for the given refresh token so it can no longer
+        be refreshed. Idempotent: revoking an unknown or already-revoked
+        token still returns success (it does not reveal whether the token
+        existed).
+
+error_semantics:
+  - rpc: Register
+    condition: email or password is empty
+    code: InvalidArgument
+  - rpc: Register
+    condition: a user with that email already exists
+    code: AlreadyExists
+
+  - rpc: Login
+    condition: email or password is empty
+    code: InvalidArgument
+  - rpc: Login
+    condition: unknown email or wrong password
+    code: Unauthenticated
+
+  - rpc: VerifyToken
+    condition: access_token is empty
+    code: InvalidArgument
+  - rpc: VerifyToken
+    condition: token is malformed, has a bad signature, or is expired
+    code: Unauthenticated
+
+  - rpc: Refresh
+    condition: refresh_token is empty
+    code: InvalidArgument
+  - rpc: Refresh
+    condition: refresh_token is unknown or revoked
+    code: Unauthenticated
+
+  - rpc: Logout
+    condition: refresh_token is empty
+    code: InvalidArgument
+
+state:
+  kind: in_memory
+  lifetime: per_process
+  stores:
+    users:
+      kind: map
+      key:
+        name: email
+        type: string
+      value:
+        user_id: string
+        password_hash: string   # SHA-256 over salt+password (v1)
+        salt: string
+        scope: string           # "guest" in v1
+    sessions:
+      kind: map
+      key:
+        name: refresh_token
+        type: string
+      value:
+        user_id: string
+        scope: string
+
+dependent_interface: []

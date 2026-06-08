@@ -201,3 +201,40 @@ Deferred (date-based fee logic adds nondeterminism to tests).
 - Deferred to v2: inventory availability filtering (needs inventory
   CheckAvailability), sponsored ads, result cache, multi-factor ranking
 - Unit tests: `services/search/internal/server/server_test.go`
+
+---
+
+## auth
+
+### v1 — shakedown
+- 5 RPCs: `Register`, `Login`, `VerifyToken`, `Refresh`, `Logout`
+- Two-token design: stateless HMAC-SHA256 JWT access tokens (VerifyToken
+  is signature+expiry only, no store lookup) + opaque server-side refresh
+  sessions (so Logout can revoke)
+- In-memory `users` (salted SHA-256 hash) + `sessions` maps; guest scope
+- Login does not leak account existence (unknown email and wrong password
+  both → Unauthenticated); Logout is idempotent
+- Deferred to v2: Argon2id, RS256 + JWKS, Redis sessions/revocation, login
+  rate limiting, admin-scope issuance
+- Unit tests: `services/auth/internal/server/server_test.go`
+
+---
+
+## notification
+
+### v1 — shakedown (synchronous placeholder)
+- 1 RPC: `Notify(event_type, user_id, booking_id)` → `repeated Message`
+  (`channel`, `body`); deterministic one-message-per-event mapping for
+  `booking.confirmed` / `booking.cancelled`
+- Stateless; no broker, no worker pool, no sink
+- Unit tests: `services/notification/internal/server/server_test.go`
+
+### v2 — _planned: async NATS JetStream worker_
+- Becomes a durable JetStream consumer of `booking.confirmed`,
+  `booking.cancelled`, `review.posted` (replaces the sync `Notify` RPC as
+  the ingestion path)
+- Configurable worker pool; queue-depth metric; 1–3 messages per event;
+  redelivery/retry failure mode
+- Requires producers to emit events — pairs with **booking v3** (NATS
+  emission) as the event-layer milestone. Also feeds pricing demand
+  signal, user loyalty accrual, and ads attribution.
