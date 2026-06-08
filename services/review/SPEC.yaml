@@ -1,0 +1,92 @@
+summary: |
+  review stores hotel reviews and serves them paginated, plus a per-hotel
+  rating aggregate. v1 is in-memory. PostReview appends a review; ListReviews
+  returns a page; GetAggregate computes review_count and avg_rating on demand.
+
+  Deferred to v2: Postgres storage; a background aggregator that periodically
+  recomputes per-hotel ratings and pushes them into profile's cache (v1
+  computes the aggregate synchronously on read instead); the "review only
+  after a completed stay" check (needs a booking lookup); photo upload (v1
+  accepts none).
+
+file_organization:
+  service_dir: services/review
+  go_module: agentbench/services/review
+  directories:
+    - services/review/cmd/review
+    - services/review/internal/server
+    - services/review/api/v1
+    - services/review/proto/v1
+
+interface:
+  protocol: grpc
+  service: ReviewService
+  package: review.v1
+  rpcs:
+    - name: PostReview
+      request:
+        hotel_id: string
+        user_id: string
+        rating: int32
+        text: string
+      response:
+        review_id: string
+      description: |
+        Appends a review for a hotel and returns its generated review_id.
+        rating must be in [1, 5].
+
+    - name: ListReviews
+      request:
+        hotel_id: string
+        page: int32
+        page_size: int32
+      response:
+        reviews: repeated Review
+        total_count: int32
+      description: |
+        Returns one page of a hotel's reviews (page is 1-based) plus the
+        total review count for the hotel. An unknown hotel yields an empty
+        page with total_count 0. Each element is a Review message with
+        fields:
+          review_id: string
+          hotel_id:  string
+          user_id:   string
+          rating:    int32
+          text:      string
+
+    - name: GetAggregate
+      request:
+        hotel_id: string
+      response:
+        review_count: int32
+        avg_rating: double
+      description: |
+        Returns the number of reviews and their mean rating for the hotel.
+        A hotel with no reviews yields review_count 0 and avg_rating 0.
+
+error_semantics:
+  - rpc: PostReview
+    condition: hotel_id or user_id is empty
+    code: InvalidArgument
+  - rpc: PostReview
+    condition: rating is outside [1, 5]
+    code: InvalidArgument
+
+  - rpc: ListReviews
+    condition: page or page_size is non-positive
+    code: InvalidArgument
+
+state:
+  kind: in_memory
+  lifetime: per_process
+  stores:
+    reviews:
+      kind: map
+      key:
+        name: hotel_id
+        type: string
+      value:
+        list: repeated Review   # appended in post order
+        # Review = {review_id, hotel_id, user_id, rating, text}
+
+dependent_interface: []

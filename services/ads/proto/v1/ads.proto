@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package ads.v1;
+
+option go_package = "agentbench/services/ads/api/v1;adsv1";
+
+// AdsService is a mock advertising bidder. Advertisers set campaigns (a bid
+// and a daily budget for a hotel); SelectSponsored runs a second-price
+// auction to fill sponsored slots and charges winners against their budgets.
+service AdsService {
+  // Creates a campaign (bid + daily budget) for a hotel and returns its id.
+  rpc SetCampaign(SetCampaignRequest) returns (SetCampaignResponse);
+
+  // Runs the second-price auction and returns the winning slots ordered by
+  // bid descending, charging each winner its price.
+  rpc SelectSponsored(SelectSponsoredRequest) returns (SelectSponsoredResponse);
+
+  // Fire-and-forget impression ingestion. v1 acknowledges only.
+  rpc LogImpression(LogImpressionRequest) returns (LogImpressionResponse);
+
+  // Fire-and-forget click ingestion. v1 acknowledges only.
+  rpc LogClick(LogClickRequest) returns (LogClickResponse);
+}
+
+message SetCampaignRequest {
+  string advertiser_id = 1;
+  string hotel_id = 2;
+  int64 daily_budget = 3;
+  int64 bid = 4;
+}
+
+message SetCampaignResponse {
+  string campaign_id = 1;
+}
+
+message SelectSponsoredRequest {
+  int32 slot_count = 1;
+}
+
+message SelectSponsoredResponse {
+  repeated SponsoredSlot slots = 1;
+}
+
+message SponsoredSlot {
+  string hotel_id = 1;
+  string campaign_id = 2;
+  int64 price = 3;
+}
+
+message LogImpressionRequest {
+  string hotel_id = 1;
+  string query_id = 2;
+}
+
+message LogImpressionResponse {}
+
+message LogClickRequest {
+  string hotel_id = 1;
+  string query_id = 2;
+}
+
+message LogClickResponse {}

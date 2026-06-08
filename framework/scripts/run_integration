@@ -17,7 +17,7 @@ echo "==> building and starting compose stack"
 "${COMPOSE[@]}" up -d --build
 
 echo "==> waiting for /healthz on all services"
-for port in 18801 18802 18803 18804 18805 18806 18807 18808; do
+for port in 18801 18802 18803 18804 18805 18806 18807 18808 18809 18810 18811 18812; do
     ok=0
     for _ in $(seq 1 30); do
         if curl -fsS "http://localhost:$port/healthz" >/dev/null 2>&1; then

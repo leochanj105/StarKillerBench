@@ -238,3 +238,59 @@ Deferred (date-based fee logic adds nondeterminism to tests).
 - Requires producers to emit events — pairs with **booking v3** (NATS
   emission) as the event-layer milestone. Also feeds pricing demand
   signal, user loyalty accrual, and ads attribution.
+
+---
+
+## user
+
+### v1 — shakedown
+- 5 RPCs: `CreateUser`, `GetUser`, `UpdatePreferences`, `GetPoints`,
+  `AccrueOnBooking`
+- In-memory `users` map; loyalty balance is a mutex-guarded read-modify-write
+- `AccrueOnBooking` adds `amount/100` points; concurrent accruals for one
+  user must not lose updates (pinned by a 50-goroutine test)
+- Deferred to v2: Postgres + version-column optimistic concurrency, Redis
+  cache, ListTrips (calls booking), async accrual via NATS booking.confirmed
+- Unit tests: `services/user/internal/server/server_test.go`
+
+---
+
+## review
+
+### v1 — shakedown
+- 3 RPCs: `PostReview`, `ListReviews` (paginated), `GetAggregate`
+  (review_count + avg_rating, computed on read)
+- In-memory `reviews` map keyed by hotel
+- Deferred to v2: Postgres, background aggregator pushing ratings into
+  profile's cache, "review only after completed stay" check (booking lookup),
+  photo upload
+- Unit tests: `services/review/internal/server/server_test.go`
+
+---
+
+## ads
+
+### v1 — shakedown
+- 4 RPCs: `SetCampaign`, `SelectSponsored` (second-price auction),
+  `LogImpression`, `LogClick` (acknowledged only)
+- Deterministic auction: top bidders win slots, each charged the next-lower
+  bid (own bid as the lone/lowest bidder), budget decremented, never negative
+- In-memory `campaigns` map
+- Deferred to v2: Postgres + Redis spend with optimistic concurrency, NATS
+  impression/click events, attribution worker on booking.confirmed
+- Unit tests: `services/ads/internal/server/server_test.go`
+
+---
+
+## admin
+
+### v1 — shakedown
+- 4 RPCs: `UpsertHotel` (→ geo + profile), `SetInventory` (→ inventory),
+  `SetRatePlan` (→ pricing), `SetCampaign` (→ ads)
+- Stateless hotelier-facing proxy; validates input, fans out, propagates
+  upstream errors. `dependent_interface: [geo, profile, inventory, pricing, ads]`
+- Deferred to v2: admin-scope auth verification, ListBookings(hotel_id)
+  (needs a booking-by-hotel query)
+- Unit tests: `services/admin/internal/server/server_test.go`
+- Integration tests: `tests/integration/admin_test.go` (hotelier lists a
+  hotel via admin → guest finds it via search)

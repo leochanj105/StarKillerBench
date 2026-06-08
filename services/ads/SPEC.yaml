@@ -1,0 +1,113 @@
+summary: |
+  ads is a mock advertising bidder. Advertisers set campaigns (a bid and a
+  daily budget for a hotel); SelectSponsored runs a second-price auction to
+  fill sponsored slots and charges winners against their budgets. Called by
+  search to mix sponsored placements into results. v1 is in-memory.
+
+  v1 auction (deterministic):
+    - Eligible campaigns = those with remaining_budget > 0.
+    - Sort eligible by bid descending; the top `slot_count` are winners.
+    - Each winner's price is the next-lower bid among eligible campaigns, or,
+      if it is the lowest/only bidder, its own bid (first-price fallback for
+      the last slot).
+    - A winner is charged its price against remaining_budget. If it cannot
+      afford its price (remaining_budget < price), it is skipped (not charged,
+      not returned) and the slot is left to the next eligible campaign.
+    - remaining_budget never goes negative.
+
+  Deferred to v2: Postgres campaign store + Redis current-day spend with
+  optimistic concurrency; NATS impression/click event emission; the
+  attribution worker that consumes booking.confirmed to credit campaigns. v1
+  LogImpression/LogClick accept and acknowledge but do not persist or emit.
+
+file_organization:
+  service_dir: services/ads
+  go_module: agentbench/services/ads
+  directories:
+    - services/ads/cmd/ads
+    - services/ads/internal/server
+    - services/ads/api/v1
+    - services/ads/proto/v1
+
+interface:
+  protocol: grpc
+  service: AdsService
+  package: ads.v1
+  rpcs:
+    - name: SetCampaign
+      request:
+        advertiser_id: string
+        hotel_id: string
+        daily_budget: int64
+        bid: int64
+      response:
+        campaign_id: string
+      description: |
+        Creates a campaign (bid + daily budget, in minor units) for a hotel
+        and returns its generated campaign_id.
+
+    - name: SelectSponsored
+      request:
+        slot_count: int32
+      response:
+        slots: repeated SponsoredSlot
+      description: |
+        Runs the second-price auction (see summary) and returns the winning
+        slots, ordered by bid descending. Charges each winner its price.
+        Each element is a SponsoredSlot message with fields:
+          hotel_id:    string
+          campaign_id: string
+          price:       int64
+        Returns an empty list if no campaign is eligible/affordable.
+
+    - name: LogImpression
+      request:
+        hotel_id: string
+        query_id: string
+      response: empty
+      description: |
+        Fire-and-forget impression ingestion. v1 acknowledges only.
+
+    - name: LogClick
+      request:
+        hotel_id: string
+        query_id: string
+      response: empty
+      description: |
+        Fire-and-forget click ingestion. v1 acknowledges only.
+
+error_semantics:
+  - rpc: SetCampaign
+    condition: advertiser_id or hotel_id is empty
+    code: InvalidArgument
+  - rpc: SetCampaign
+    condition: daily_budget or bid is non-positive
+    code: InvalidArgument
+
+  - rpc: SelectSponsored
+    condition: slot_count is non-positive
+    code: InvalidArgument
+
+  - rpc: LogImpression
+    condition: hotel_id is empty
+    code: InvalidArgument
+  - rpc: LogClick
+    condition: hotel_id is empty
+    code: InvalidArgument
+
+state:
+  kind: in_memory
+  lifetime: per_process
+  stores:
+    campaigns:
+      kind: map
+      key:
+        name: campaign_id
+        type: string
+      value:
+        advertiser_id: string
+        hotel_id: string
+        bid: int64
+        remaining_budget: int64   # decremented on win; never negative
+
+dependent_interface: []

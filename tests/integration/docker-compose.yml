@@ -128,3 +128,38 @@ services:
     ports:
       - "18108:50051"
       - "18808:8080"
+
+  # ── P1 leaves + the admin extranet (admin fans out to 5 services) ──
+  user:
+    build:
+      context: ../../services/user
+    container_name: user
+    ports:
+      - "18109:50051"
+      - "18809:8080"
+
+  review:
+    build:
+      context: ../../services/review
+    container_name: review
+    ports:
+      - "18110:50051"
+      - "18810:8080"
+
+  ads:
+    build:
+      context: ../../services/ads
+    container_name: ads
+    ports:
+      - "18111:50051"
+      - "18811:8080"
+
+  admin:
+    build:
+      context: ../..
+      dockerfile: services/admin/Dockerfile
+    container_name: admin
+    depends_on: [geo, profile, inventory, pricing, ads]
+    ports:
+      - "18112:50051"
+      - "18812:8080"

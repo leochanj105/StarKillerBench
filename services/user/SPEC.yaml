@@ -1,0 +1,123 @@
+summary: |
+  user owns non-credential account state: preferences and a loyalty points
+  balance. (Identity — register/login — lives in auth.) v1 is in-memory.
+
+  The systems-relevant behavior is the loyalty balance: AccrueOnBooking is a
+  read-modify-write on a per-user counter, and concurrent accruals for the
+  same user must serialize without losing updates. v1 enforces this with a
+  mutex (the in-memory analog of the realistic version's optimistic-
+  concurrency version column in Postgres, which is deferred).
+
+  Deferred to v2: Postgres with a version column for optimistic concurrency,
+  Redis cache, ListTrips (calls booking), ListPaymentMethods, and async
+  accrual via a NATS booking.confirmed consumer (v1 exposes AccrueOnBooking
+  as a direct RPC instead).
+
+file_organization:
+  service_dir: services/user
+  go_module: agentbench/services/user
+  directories:
+    - services/user/cmd/user
+    - services/user/internal/server
+    - services/user/api/v1
+    - services/user/proto/v1
+
+interface:
+  protocol: grpc
+  service: UserService
+  package: user.v1
+  rpcs:
+    - name: CreateUser
+      request:
+        user_id: string
+      response: empty
+      description: |
+        Creates a user record with zero points and empty preferences.
+
+    - name: GetUser
+      request:
+        user_id: string
+      response:
+        user_id: string
+        currency: string
+        locale: string
+        points: int64
+      description: |
+        Returns the user's preferences and current points balance.
+
+    - name: UpdatePreferences
+      request:
+        user_id: string
+        currency: string
+        locale: string
+      response: empty
+      description: |
+        Overwrites the user's preference fields.
+
+    - name: GetPoints
+      request:
+        user_id: string
+      response:
+        points: int64
+      description: |
+        Returns the current loyalty points balance.
+
+    - name: AccrueOnBooking
+      request:
+        user_id: string
+        amount: int64
+      response:
+        points: int64
+      description: |
+        Adds loyalty points for a booking of `amount` (minor units): points
+        earned = amount / 100 (integer division). Atomically increments the
+        balance and returns the new total. Concurrent calls for the same
+        user must not lose updates.
+
+error_semantics:
+  - rpc: CreateUser
+    condition: user_id is empty
+    code: InvalidArgument
+  - rpc: CreateUser
+    condition: a user with that user_id already exists
+    code: AlreadyExists
+
+  - rpc: GetUser
+    condition: unknown user_id
+    code: NotFound
+
+  - rpc: UpdatePreferences
+    condition: user_id is empty
+    code: InvalidArgument
+  - rpc: UpdatePreferences
+    condition: unknown user_id
+    code: NotFound
+
+  - rpc: GetPoints
+    condition: unknown user_id
+    code: NotFound
+
+  - rpc: AccrueOnBooking
+    condition: user_id is empty
+    code: InvalidArgument
+  - rpc: AccrueOnBooking
+    condition: amount is non-positive
+    code: InvalidArgument
+  - rpc: AccrueOnBooking
+    condition: unknown user_id
+    code: NotFound
+
+state:
+  kind: in_memory
+  lifetime: per_process
+  stores:
+    users:
+      kind: map
+      key:
+        name: user_id
+        type: string
+      value:
+        currency: string
+        locale: string
+        points: int64        # loyalty balance; RMW under a lock
+dependent_interface: []

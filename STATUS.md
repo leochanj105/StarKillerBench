@@ -7,31 +7,43 @@ Last refreshed: 2026-06-07.
 
 ## 1. What's built
 
-Four services, each implemented through the agent pipeline (`framework/`),
-each iterated past the original in-memory shakedown to a durable/realistic
-v2+. All unit tests, store-backed tests, and the cross-service integration
-suite pass.
+**14 of 15 services** are built through the agent pipeline (`framework/`).
+Only `frontend` remains. All unit tests, store-backed tests, and the
+cross-service integration suite pass.
 
-| service       | latest | RPCs                                        | state                     | deps                          |
-|---------------|--------|---------------------------------------------|---------------------------|-------------------------------|
-| payment       | v2     | Authorize, Capture, Void, Refund            | in-memory (by design)     | (none)                        |
-| inventory     | v3     | SetStock, Hold, Commit, Release, ReturnStock| Postgres                  | (none)                        |
-| booking       | v2     | CreateBooking, GetBooking, ListBookings     | Postgres                  | inventory, payment            |
-| cancellation  | v2     | Cancel                                      | stateless                 | booking, payment, inventory   |
+The reservation/write core and the read/discovery path are both complete; the
+four P1 services (ads/review/user/admin) are in. The four original services
+have been iterated past their in-memory shakedown to durable/realistic v2+;
+the 10 newer services are at v1 shakedown fidelity (in-memory, gRPC-only).
 
-Per-service realism delivered so far (see `VERSIONS.md` for the full log):
-- **payment v2** — deterministic chaos tokens (decline / capture-fail /
-  refund-fail) + latency injection.
-- **inventory v2/v3** — Postgres backing; no-oversell under concurrent Hold
-  (row lock); `ReturnStock` (post-commit undo for cancellation).
-- **booking v2** — Postgres records; race-safe idempotency (in-process key
-  lock + UNIQUE constraint).
-- **cancellation v2** — returns the room to inventory on cancel (closes the
-  v1 gap).
+| service       | pri | latest | state                | deps                                      |
+|---------------|-----|--------|----------------------|-------------------------------------------|
+| payment       | P0  | v2     | in-memory (by design)| (none)                                    |
+| inventory     | P0  | v3     | Postgres             | (none)                                    |
+| booking       | P0  | v2     | Postgres             | inventory, payment                        |
+| cancellation  | P1  | v2     | stateless            | booking, payment, inventory               |
+| geo           | P0  | v1     | in-memory            | (none)                                    |
+| profile       | P0  | v1     | in-memory            | (none)                                    |
+| pricing       | P0  | v1     | in-memory            | (none)                                    |
+| search        | P0  | v1     | stateless            | geo, profile, pricing                     |
+| auth          | P0  | v1     | in-memory            | (none)                                    |
+| notification  | P0  | v1     | stateless            | (none)                                    |
+| user          | P1  | v1     | in-memory            | (none)                                    |
+| review        | P1  | v1     | in-memory            | (none)                                    |
+| ads           | P1  | v1     | in-memory            | (none)                                    |
+| admin         | P1  | v1     | stateless            | geo, profile, inventory, pricing, ads     |
+| **frontend**  | P0  | —      | **NOT BUILT**        | auth, search, booking, cancellation, user, review |
 
-The cross-service integration suite (`tests/integration/`) brings up the 4
-services + 2 Postgres instances via docker-compose and runs 8 saga scenarios
-plus the store-backed unit tests. One command: `framework/scripts/run_integration`.
+Realism iterations on the original four are logged in `VERSIONS.md` (payment
+chaos+latency; inventory Postgres + no-oversell + ReturnStock; booking
+Postgres + race-safe idempotency; cancellation inventory-return). Each newer
+service's SPEC summary lists what its v1 defers to a future v2.
+
+The integration suite (`tests/integration/`) brings up all 14 services + 2
+Postgres instances via docker-compose and runs: the store-backed unit tests
+(inventory + booking), 8 saga scenarios, the read-path aggregation test
+(geo+profile+pricing+search), and the admin→search hotelier-to-guest test.
+One command: `framework/scripts/run_integration`.
 
 ## 2. What's validated — the methodology
 
@@ -46,6 +58,10 @@ proven end-to-end:
 - Iteration loop: edit SPEC + add a versioned test file (`server_vN_test.go`)
   → re-run pipeline. Demonstrated across payment, inventory, booking,
   cancellation.
+- Scaled to breadth: 10 additional services built v1-from-scratch through
+  the same SPEC → audit → generate → verify loop, including fan-out
+  aggregators (search, admin) that mock-test their multi-service calls and
+  are then verified live in the integration suite.
 
 ## 3. Deliberate divergences from ARCHITECTURE.md
 
@@ -90,34 +106,50 @@ go.work, each service owns its store, distroless images). Closing the gap is
 
 ## 4. The remaining gap
 
-Two axes:
+Breadth is essentially done (14/15). What remains:
 
-**Breadth — 11 of 15 services unbuilt.** Built: inventory, booking, payment,
-cancellation. Missing P0: `frontend`, `auth`, `search`, `geo`, `profile`,
-`pricing`, `notification`. Missing P1: `ads`, `review`, `user`, `admin`.
-This is the dominant remaining work. See §5 below for the build plan.
+**`frontend` — the last service, deliberately deferred.** It is the HTTP
+edge (public JSON/HTML API) that fans out to auth, search, booking,
+cancellation, user, and review. It was held back until those dependencies
+existed (they now do), and is intentionally left for a future session — the
+backend is fully exercisable without it via the gRPC integration suite, so
+nothing is blocked. frontend adds reach (a real guest journey + the
+"auth on every request" hot path), not new backend capability.
 
-**Fidelity — the cross-cutting layer (§3 items 2–6)** is unbuilt for *all*
-services. Best done as a dedicated pass after breadth, so it's applied
-uniformly rather than retrofitted piecemeal.
+**Fidelity — the cross-cutting layer (§3 items 2–6)** is still unbuilt for
+*all* services: observability, the shared `pkg/`, the RFC-7807 error
+envelope, a uniform chaos framework, `/readyz` + `/metrics`, a consistency
+suite, and a load generator. This is now the dominant remaining work and is
+best done as a dedicated pass so it lands uniformly rather than piecemeal.
+
+**Per-service realism** — the 10 newer services are at v1 shakedown fidelity.
+Each SPEC summary lists its deferred v2 (geo R-tree/Mongo, profile
+cache + batch, pricing demand signal + batch, search availability + ads +
+cache, auth Argon2/RS256/Redis, notification NATS worker, user Postgres
+optimistic concurrency, review aggregator, ads Postgres/Redis + attribution,
+admin auth-scope). The original four already carry their first realism
+iteration.
 
 ## 5. Plan
 
-Phase ordering (Path A continued):
-1. **Breadth at v1 shakedown fidelity** — build the 11 missing services as
-   in-memory, gRPC-only (frontend: HTTP) simplified v1s, in dependency order,
-   so the full topology exists. Defer Postgres/Redis/Mongo/NATS to per-service
-   v2 iterations, exactly as the original 4 were done.
-2. **Per-service realism iterations** — bring new services to durable
-   state + their dominant systems behavior (geo R-tree, profile cache,
-   pricing demand signal, search result cache, auth Argon2/JWT/Redis, etc.).
-3. **Cross-cutting fidelity pass** — introduce `pkg/obs`, `pkg/grpcx`,
-   `pkg/chaos`, `pkg/errs`; add OTel/metrics/logging interceptors and the
-   RFC-7807 envelope uniformly; add `testing/consistency/` and a load
-   generator.
-4. **NATS event layer** — `booking.confirmed` / `booking.cancelled` /
-   `review.posted` / impression streams, wiring notification, pricing
-   demand, user loyalty, and ads attribution.
+Path A continues. Breadth (Phase 1) is complete except frontend.
 
-The detailed v1 build order for Phase 1 is tracked alongside this plan; see
-the next section of the working notes / VERSIONS.md as each lands.
+1. **Breadth** — ✅ done (14/15). `frontend` deferred to a future session.
+2. **Cross-cutting fidelity pass** — introduce `pkg/obs`, `pkg/grpcx`,
+   `pkg/chaos`, `pkg/errs`; add OTel/metrics/logging interceptors and the
+   RFC-7807 envelope uniformly; add `/readyz` + `/metrics`,
+   `testing/consistency/`, and a load generator. Likely the highest-leverage
+   next phase — it applies to every service and closes most of §3.
+3. **Per-service realism iterations** — bring each v1 service to durable
+   state + its dominant systems behavior (the deferred-v2 list above), via
+   the proven SPEC-edit + versioned-test loop.
+4. **NATS event layer** — `booking.confirmed` / `booking.cancelled` /
+   `review.posted` / impression streams, wiring notification (v2), pricing
+   demand signal, user loyalty accrual, and ads attribution. Pairs with
+   booking v3 (event emission).
+5. **frontend** — build the edge once the team wants a runnable guest
+   journey; revisit alongside or after the fidelity pass so it inherits the
+   shared interceptors.
+
+Per-service v1→v2 deferrals are tracked in each service's `SPEC.yaml` summary
+and in `VERSIONS.md` as iterations land.

@@ -1,6 +1,8 @@
 go 1.25.4
 
 use (
+	./services/admin
+	./services/ads
 	./services/auth
 	./services/booking
 	./services/cancellation
@@ -10,6 +12,8 @@ use (
 	./services/payment
 	./services/pricing
 	./services/profile
+	./services/review
 	./services/search
+	./services/user
 	./tests/integration
 )

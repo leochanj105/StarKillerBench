@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package admin.v1;
+
+option go_package = "agentbench/services/admin/api/v1;adminv1";
+
+// AdminService is the hotelier-facing extranet. It owns no state; each RPC
+// validates input and fans out to the service that owns the data.
+service AdminService {
+  // Registers/updates a hotel: coordinates → geo.UpsertHotel, metadata →
+  // profile.UpsertProfile.
+  rpc UpsertHotel(UpsertHotelRequest) returns (UpsertHotelResponse);
+
+  // Sets total stock for a (hotel, room_type, date) via inventory.SetStock.
+  rpc SetInventory(SetInventoryRequest) returns (SetInventoryResponse);
+
+  // Sets the nightly rate via pricing.SetRatePlan.
+  rpc SetRatePlan(SetRatePlanRequest) returns (SetRatePlanResponse);
+
+  // Creates an ad campaign via ads.SetCampaign and returns its campaign_id.
+  rpc SetCampaign(SetCampaignRequest) returns (SetCampaignResponse);
+}
+
+message UpsertHotelRequest {
+  string hotel_id = 1;
+  string name = 2;
+  string address = 3;
+  double lat = 4;
+  double lng = 5;
+  repeated string room_types = 6;
+}
+
+message UpsertHotelResponse {}
+
+message SetInventoryRequest {
+  string hotel_id = 1;
+  string room_type = 2;
+  string date = 3;
+  int32 total = 4;
+}
+
+message SetInventoryResponse {}
+
+message SetRatePlanRequest {
+  string hotel_id = 1;
+  string room_type = 2;
+  int64 nightly_rate = 3;
+  string currency = 4;
+}
+
+message SetRatePlanResponse {}
+
+message SetCampaignRequest {
+  string advertiser_id = 1;
+  string hotel_id = 2;
+  int64 daily_budget = 3;
+  int64 bid = 4;
+}
+
+message SetCampaignResponse {
+  string campaign_id = 1;
+}

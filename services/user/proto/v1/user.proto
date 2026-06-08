@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package user.v1;
+
+option go_package = "agentbench/services/user/api/v1;userv1";
+
+// UserService owns non-credential account state: preferences and a loyalty
+// points balance.
+service UserService {
+  // Creates a user record with zero points and empty preferences.
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse);
+
+  // Returns the user's preferences and current points balance.
+  rpc GetUser(GetUserRequest) returns (GetUserResponse);
+
+  // Overwrites the user's preference fields.
+  rpc UpdatePreferences(UpdatePreferencesRequest) returns (UpdatePreferencesResponse);
+
+  // Returns the current loyalty points balance.
+  rpc GetPoints(GetPointsRequest) returns (GetPointsResponse);
+
+  // Adds loyalty points for a booking; atomically increments and returns the
+  // new total.
+  rpc AccrueOnBooking(AccrueOnBookingRequest) returns (AccrueOnBookingResponse);
+}
+
+message CreateUserRequest {
+  string user_id = 1;
+}
+
+message CreateUserResponse {}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message GetUserResponse {
+  string user_id = 1;
+  string currency = 2;
+  string locale = 3;
+  int64 points = 4;
+}
+
+message UpdatePreferencesRequest {
+  string user_id = 1;
+  string currency = 2;
+  string locale = 3;
+}
+
+message UpdatePreferencesResponse {}
+
+message GetPointsRequest {
+  string user_id = 1;
+}
+
+message GetPointsResponse {
+  int64 points = 1;
+}
+
+message AccrueOnBookingRequest {
+  string user_id = 1;
+  int64 amount = 2;
+}
+
+message AccrueOnBookingResponse {
+  int64 points = 1;
+}

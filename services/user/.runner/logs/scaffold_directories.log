@@ -1,0 +1,7 @@
+
+$ python3 framework/scripts/scaffold_from_spec services/user/SPEC.yaml
+go: creating new go.mod: module agentbench/services/user
+go: to add module requirements and sums:
+	go mod tidy
+
+$ /home/leochanj/Desktop/agentbench/framework/checkers/file_organization_matches_spec services/user/SPEC.yaml
